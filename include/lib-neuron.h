@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include "matrixcalculation.h"
+#include "layers.h"
 #include "lossfunctions.h"
 #include "optimizers.h"
 #include "models.h"
