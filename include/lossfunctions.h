@@ -1,6 +1,11 @@
 #ifndef LOSSFUNCTIONS_H
 #define LOSSFUNCTIONS_H
 
+typedef enum {
+	LOSS_MSE = 0,
+	LOSS_BCE = 1
+} LossFunctionType;
+
 /* Mean Squared Error (MSE). */
 float loss_mse(const float *pred, const float *target, int size);
 

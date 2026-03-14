@@ -1,6 +1,6 @@
 # Quickstart
 
-This quickstart shows how to build the library and compile one example.
+This quickstart shows how to build the library and run both shipped examples.
 
 ## 1) Build the library
 
@@ -12,19 +12,27 @@ make
 
 This produces `libneuron.a`.
 
-## 2) Build an example from root
+## 2) Build all examples from root
 
 ```sh
-make sequential_xor_plugin
+make examples
 ```
 
-This builds `examples/sequential_xor_plugin`.
+This builds:
 
-## 3) Run the example
+- `examples/simple_compact`
+- `examples/sequential_xor_plugin`
+- `examples/Other_Exaple`
+
+## 3) Run the examples
 
 ```sh
+./examples/simple_compact
 ./examples/sequential_xor_plugin
+./examples/Other_Exaple
 ```
+
+`Other_Exaple` is a compact layer-array training example.
 
 ## 4) Compile your own program
 

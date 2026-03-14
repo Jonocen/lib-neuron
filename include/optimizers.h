@@ -1,6 +1,11 @@
 #ifndef OPTIMIZERS_H
 #define OPTIMIZERS_H
 
+typedef enum {
+    OPTIMIZER_SGD = 0,
+    OPTIMIZER_ADAM = 1
+} OptimizerType;
+
 /*
  * Adam optimizer.
  * Updates weights in-place and keeps per-parameter first/second moments.

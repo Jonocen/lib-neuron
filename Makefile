@@ -15,8 +15,9 @@ OBJ := matrixcalculation.o layers.o lossfunctions.o optimizers.o models.o
 PIC_OBJ := matrixcalculation.pic.o layers.pic.o lossfunctions.pic.o optimizers.pic.o models.pic.o
 LIB := libneuron.a
 SHARED_LIB := libneuron.so
+EXAMPLE_BINARIES := $(patsubst examples/%.c,examples/%,$(wildcard examples/*.c))
 
-.PHONY: all lib static shared debug clean examples sequential_xor_plugin Other_Exaple
+.PHONY: all lib static shared debug clean examples sequential_xor_plugin Other_Exaple simple_compact
 
 all: CFLAGS += $(RELEASE)
 all: lib
@@ -67,7 +68,7 @@ models.pic.o: src/models.c include/models.h include/matrixcalculation.h include/
 	$(CC) $(CFLAGS) $(RELEASE) $(PIC) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(PIC_OBJ) $(LIB) $(SHARED_LIB)
+	rm -f $(OBJ) $(PIC_OBJ) $(LIB) $(SHARED_LIB) $(EXAMPLE_BINARIES)
 
 examples: lib
 	$(MAKE) -C examples
@@ -77,3 +78,6 @@ sequential_xor_plugin: lib
 
 Other_Exaple: lib
 	$(MAKE) -C examples Other_Exaple
+
+simple_compact: lib
+	$(MAKE) -C examples simple_compact

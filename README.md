@@ -43,6 +43,7 @@ You can include everything with a single header:
 - `docs/Examples.md`
 - `docs/Training.md`
 - `docs/FirstScript.md`
+- `docs/APIReference.md`
 
 ## Return convention
 
@@ -97,7 +98,7 @@ It shows how to:
 
 - initialize a `SequentialModel`
 - add dense plugin layers with `sequential_model_add_dense`
-- train with `sequential_model_train_step_sgd`
+- choose optimizer and loss at runtime
 - run inference with `sequential_model_forward`
 
 Build and run it with:
@@ -113,16 +114,29 @@ Minimal usage pattern:
 SequentialModel model;
 float out[1];
 float loss = 0.0f;
+OptimizerType optimizer = OPTIMIZER_SGD;
+LossFunctionType loss_function = LOSS_BCE;
+float learning_rate = 0.05f;
 
 sequential_model_init(&model, 2);
 sequential_model_add_dense(&model, 2, 4, ACT_RELU);
 sequential_model_add_dense(&model, 4, 1, ACT_SIGMOID);
 
-sequential_model_train_step_sgd(&model, input, target, out, 0.05f, &loss);
+sequential_model_train_step_with_loss(&model,
+									  input,
+									  target,
+									  out,
+									  loss_function,
+									  optimizer,
+									  learning_rate,
+									  NULL,
+									  &loss);
 sequential_model_forward(&model, input, out);
 
 sequential_model_free(&model);
 ```
+
+`examples/Other_Exaple.c` is the advanced training example with a deeper network, selectable loss/optimizer, and evaluation metrics.
 
 ## Contributing
 
