@@ -26,7 +26,7 @@ float act_deriv(float x, Activation a) {
 }
  
 int layer_init(Layer *layer, int input_size, int output_size, Activation activation) {
-    if (!layer) return -1;
+    if (!layer || input_size <= 0 || output_size <= 0) return -1;
     layer->input_size  = input_size;
     layer->output_size = output_size;
     layer->activation  = activation;
@@ -78,18 +78,14 @@ int layer_backward(const Layer *layer,
     int in  = layer->input_size;
     int out = layer->output_size;
 
-    float *delta = malloc(out * sizeof(float));
-    if (!delta) return -1;
-
-    /* apply activation derivative */
+    /* Reuse grad_b as the layer-local delta buffer to avoid heap allocation. */
     for (int i = 0; i < out; i++)
-        delta[i] = delta_in[i] * act_deriv(layer->cache_z[i], layer->activation);
+        grad_b[i] = delta_in[i] * act_deriv(layer->cache_z[i], layer->activation);
 
     /* weight and bias gradients */
     for (int i = 0; i < out; i++) {
-        grad_b[i] = delta[i];
         for (int j = 0; j < in; j++)
-            grad_w[i * in + j] = delta[i] * layer->cache_input[j];
+            grad_w[i * in + j] = grad_b[i] * layer->cache_input[j];
     }
 
     /* propagate error to previous layer: delta_out = W^T * delta */
@@ -97,12 +93,11 @@ int layer_backward(const Layer *layer,
         for (int j = 0; j < in; j++) {
             float sum = 0.0f;
             for (int i = 0; i < out; i++)
-                sum += layer->weights[i * in + j] * delta[i];
+                sum += layer->weights[i * in + j] * grad_b[i];
             delta_out[j] = sum;
         }
     }
 
-    free(delta);
     return 0;
 }
 
@@ -234,17 +229,9 @@ int conv2d_layer_backward(const Conv2DLayer *layer,
                           float       *grad_b) {
     if (!layer || !delta_in || !grad_w || !grad_b) return -1;
 
-    int output_size = layer->output_width * layer->output_height * layer->output_channels;
     int input_size = layer->input_width * layer->input_height * layer->input_channels;
     int weights_size = layer->output_channels * layer->input_channels *
                        layer->kernel_width * layer->kernel_height;
-
-    float *delta = malloc((size_t)output_size * sizeof(float));
-    if (!delta) return -1;
-
-    for (int i = 0; i < output_size; i++) {
-        delta[i] = delta_in[i] * act_deriv(layer->cache_z[i], layer->activation);
-    }
 
     memset(grad_w, 0, (size_t)weights_size * sizeof(float));
     memset(grad_b, 0, (size_t)layer->output_channels * sizeof(float));
@@ -253,7 +240,7 @@ int conv2d_layer_backward(const Conv2DLayer *layer,
         for (int oy = 0; oy < layer->output_height; oy++) {
             for (int ox = 0; ox < layer->output_width; ox++) {
                 int output_idx = conv2d_output_index(layer, oc, oy, ox);
-                float d = delta[output_idx];
+                float d = delta_in[output_idx] * act_deriv(layer->cache_z[output_idx], layer->activation);
                 grad_b[oc] += d;
 
                 int in_y_origin = oy * layer->stride - layer->padding;
@@ -285,7 +272,7 @@ int conv2d_layer_backward(const Conv2DLayer *layer,
             for (int oy = 0; oy < layer->output_height; oy++) {
                 for (int ox = 0; ox < layer->output_width; ox++) {
                     int output_idx = conv2d_output_index(layer, oc, oy, ox);
-                    float d = delta[output_idx];
+                    float d = delta_in[output_idx] * act_deriv(layer->cache_z[output_idx], layer->activation);
 
                     int in_y_origin = oy * layer->stride - layer->padding;
                     int in_x_origin = ox * layer->stride - layer->padding;
@@ -310,7 +297,6 @@ int conv2d_layer_backward(const Conv2DLayer *layer,
         }
     }
 
-    free(delta);
     return 0;
 }
 

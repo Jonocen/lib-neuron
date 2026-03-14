@@ -29,7 +29,7 @@ Run:
 What it demonstrates:
 
 - minimal `SequentialModel` setup
-- one-call training via `sequential_model_train_step_with_loss`
+- one-call training via `sequential_model_train_step`
 - selectable optimizer/loss with compact code
 
 ## Example 1: classic XOR training
@@ -52,7 +52,7 @@ What it demonstrates:
 
 - layer-array API (`Layer layers[]`)
 - compact training loop with stack-allocated gradients
-- loss/optimizer choice through `sequential_train_step_with_loss`
+- loss/optimizer choice through `sequential_train_step`
 - low-level layer-array workflow in minimal lines
 
 ## Example 2: plugin-based sequential XOR

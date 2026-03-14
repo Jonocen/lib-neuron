@@ -9,11 +9,10 @@ This page explains the training flow in `lib-neuron`.
 - `optimizers`: `sgd_optimizer`, `adam_optimizer`, `rmsprop_optimizer`
 - `models`: sequential helpers
 
-Loss selection in models:
+Loss selection in models (`loss_function` parameter accepts `LOSS_MSE` or `LOSS_BCE`):
 
-- `sequential_model_train_step_mse` / `sequential_model_train_step_bce`
-- `sequential_train_step_mse` / `sequential_train_step_bce`
-- `sequential_model_train_step_with_loss` / `sequential_train_step_with_loss`
+- `sequential_model_train_step` / `sequential_train_step`
+- `sequential_model_optimize_from_prediction` / `sequential_optimize_from_prediction`
 
 Easy sequential workflow:
 
@@ -35,12 +34,7 @@ Conv/pool model building helpers:
 ## Built-in sequential training
 
 Use `sequential_train_step` (array-of-layers API) or `sequential_model_train_step` (plugin API).
-
-These default to `LOSS_MSE` for compatibility.
-
-If you want explicit loss naming, use the `_mse` and `_bce` variants.
-
-If you want runtime loss selection, use `*_with_loss` variants.
+Both accept a `loss_function` parameter (`LOSS_MSE` or `LOSS_BCE`) and full optimizer control.
 
 One-call helper pattern:
 
@@ -49,6 +43,7 @@ sequential_model_train_step(&model,
 							input,
 							target,
 							output,
+							LOSS_MSE,
 							OPTIMIZER_SGD,
 							0.05f,
 							NULL,
@@ -71,8 +66,16 @@ Compile/train/predict pattern:
 
 ```c
 sequential_model_compile(&model, LOSS_MSE, OPTIMIZER_SGD, 0.05f, 0.9f, 0.999f);
-sequential_model_train(&model, &x[0][0], &y[0][0], 4, 2, 1, 5000, &loss);
+// batch_size=1: stochastic (one update per sample)
+sequential_model_train(&model, &x[0][0], &y[0][0], 4, 2, 1, 5000, 1, &loss);
 sequential_model_predict(&model, input, output);
+```
+
+Mini-batch (batch_size > 1 groups samples before each gradient update):
+
+```c
+sequential_model_compile(&model, LOSS_MSE, OPTIMIZER_ADAM, 0.005f, 0.9f, 0.999f);
+sequential_model_train(&model, &x[0][0], &y[0][0], 4, 2, 1, 10000, 4, &loss);
 ```
 
 If you prefer explicit control, you can split it into two calls:
@@ -88,6 +91,7 @@ loss = loss_mse(output, target, output_size);
 sequential_model_optimize_from_prediction(&model,
 										  output,
 										  target,
+										  LOSS_MSE,
 										  OPTIMIZER_ADAM,
 										  learning_rate,
 										  &adam,
@@ -99,13 +103,14 @@ Split pattern with explicit BCE:
 ```c
 sequential_model_forward(&model, input, output);
 
-sequential_model_optimize_from_prediction_bce(&model,
-											  output,
-											  target,
-											  OPTIMIZER_ADAM,
-											  learning_rate,
-											  &adam,
-											  &loss);
+sequential_model_optimize_from_prediction(&model,
+										  output,
+										  target,
+										  LOSS_BCE,
+										  OPTIMIZER_ADAM,
+										  learning_rate,
+										  &adam,
+										  &loss);
 ```
 
 Both do this sequence each step:
@@ -117,11 +122,6 @@ Both do this sequence each step:
 5. Update weights/biases with the selected optimizer
 
 For maxpool layers, there are no trainable parameters. Backward still propagates gradients to the input positions selected by max pooling.
-
-SGD compatibility wrappers still exist:
-
-- `sequential_train_step_sgd`
-- `sequential_model_train_step_sgd`
 
 ## Using Adam with sequential helpers
 

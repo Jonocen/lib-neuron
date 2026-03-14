@@ -10,11 +10,13 @@ int main(void) {
 
     if (sequential_model_init(&model, 2) != 0 ||
         sequential_model_add_dense(&model, 2, 4, ACT_RELU) != 0 ||
-        sequential_model_add_dense(&model, 4, 1, ACT_SIGMOID) != 0) return 1;
-        sequential_model_randomize(&model, 0.4f);
+        sequential_model_add_dense(&model, 4, 1, ACT_SIGMOID) != 0 ||
+        sequential_model_randomize(&model, 0.4f) != 0) {
+        return 1;
+    }
 
     if (sequential_model_compile(&model, LOSS_MSE, OPTIMIZER_ADAM, 0.005f, 0.9f, 0.999f) != 0) return 1;
-    if (sequential_model_train(&model, &x[0][0], &y[0][0], 4, 2, 1, 10000, &loss) != 0) return 1;
+    if (sequential_model_train(&model, &x[0][0], &y[0][0], 4, 2, 1, 10000, 4, &loss) != 0) return 1;
     printf("final loss = %.6f\n", loss);
     puts("predictions:");
     for (int i = 0; i < 4; i++) {
@@ -23,6 +25,5 @@ int main(void) {
     }
     sequential_model_save_lnn(&model, "xor_model.lnn");
     sequential_model_free(&model);
-    
     return 0;
 }

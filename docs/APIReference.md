@@ -225,34 +225,13 @@ Scope:
 `int sequential_model_train_step_cfg(SequentialModel *model, const float *input, const float *target, float *output, const SequentialTrainConfig *cfg, float *loss_out)`
 - Executes one train step using compact `cfg` (forward + loss grad + backward + update).
 
-`int sequential_model_train_step_sgd(SequentialModel *model, const float *input, const float *target, float *output, float learning_rate, float *loss_out)`
-- One-step training helper for MSE + SGD.
-
-`int sequential_model_train_step(SequentialModel *model, const float *input, const float *target, float *output, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- One-step training helper for MSE + selected optimizer.
-
-`int sequential_model_train_step_with_loss(SequentialModel *model, const float *input, const float *target, float *output, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- One-step training helper with selectable loss and optimizer.
-
-`int sequential_model_train_step_mse(SequentialModel *model, const float *input, const float *target, float *output, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- One-step training helper with fixed MSE loss.
-
-`int sequential_model_train_step_bce(SequentialModel *model, const float *input, const float *target, float *output, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- One-step training helper with fixed BCE loss.
+`int sequential_model_train_step(SequentialModel *model, const float *input, const float *target, float *output, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
+- One training step with selectable loss (`LOSS_MSE` or `LOSS_BCE`) and optimizer.
 
 ### Optimize from already-computed prediction (plugin sequential API)
 
-`int sequential_model_optimize_from_prediction(SequentialModel *model, const float *prediction, const float *target, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- Runs optimization phase only (MSE) using existing `prediction` from a previous forward pass.
-
-`int sequential_model_optimize_from_prediction_with_loss(SequentialModel *model, const float *prediction, const float *target, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- Runs optimization phase only with selectable loss and optimizer.
-
-`int sequential_model_optimize_from_prediction_mse(SequentialModel *model, const float *prediction, const float *target, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- Optimization-only helper with fixed MSE loss.
-
-`int sequential_model_optimize_from_prediction_bce(SequentialModel *model, const float *prediction, const float *target, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- Optimization-only helper with fixed BCE loss.
+`int sequential_model_optimize_from_prediction(SequentialModel *model, const float *prediction, const float *target, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
+- Runs optimization phase only using existing `prediction` from a previous forward pass. Pass `LOSS_MSE` or `LOSS_BCE`.
 
 ### Layer-array sequential API
 
@@ -260,31 +239,11 @@ Scope:
 - Runs forward pass through a raw array of dense `Layer` structs.
 
 `int sequential_train_step_sgd(Layer *layers, int num_layers, const float *input, const float *target, float *output, float **grads_w, float **grads_b, float learning_rate, float *loss_out)`
-- One-step training on dense layer arrays using MSE + SGD.
-
-`int sequential_train_step(Layer *layers, int num_layers, const float *input, const float *target, float *output, float **grads_w, float **grads_b, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- One-step training on dense layer arrays using MSE + selected optimizer.
-
-`int sequential_train_step_with_loss(Layer *layers, int num_layers, const float *input, const float *target, float *output, float **grads_w, float **grads_b, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
+`int sequential_train_step(Layer *layers, int num_layers, const float *input, const float *target, float *output, float **grads_w, float **grads_b, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
 - One-step training on dense layer arrays with selectable loss and optimizer.
 
-`int sequential_train_step_mse(Layer *layers, int num_layers, const float *input, const float *target, float *output, float **grads_w, float **grads_b, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- One-step training on dense layer arrays with fixed MSE loss.
-
-`int sequential_train_step_bce(Layer *layers, int num_layers, const float *input, const float *target, float *output, float **grads_w, float **grads_b, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- One-step training on dense layer arrays with fixed BCE loss.
-
-`int sequential_optimize_from_prediction(Layer *layers, int num_layers, const float *prediction, const float *target, float **grads_w, float **grads_b, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- Optimization-only helper for layer arrays with fixed MSE loss.
-
-`int sequential_optimize_from_prediction_with_loss(Layer *layers, int num_layers, const float *prediction, const float *target, float **grads_w, float **grads_b, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
+`int sequential_optimize_from_prediction(Layer *layers, int num_layers, const float *prediction, const float *target, float **grads_w, float **grads_b, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
 - Optimization-only helper for layer arrays with selectable loss and optimizer.
-
-`int sequential_optimize_from_prediction_mse(Layer *layers, int num_layers, const float *prediction, const float *target, float **grads_w, float **grads_b, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- Optimization-only helper for layer arrays with fixed MSE loss.
-
-`int sequential_optimize_from_prediction_bce(Layer *layers, int num_layers, const float *prediction, const float *target, float **grads_w, float **grads_b, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- Optimization-only helper for layer arrays with fixed BCE loss.
 
 ## Common Error Cases
 

@@ -26,6 +26,17 @@ typedef struct {
 	float            compiled_learning_rate;
 	int              compiled_owns_adam_state;
 	AdamOptimizerState compiled_adam_state;
+	/* Internal reusable workspaces for faster forward/backward passes. */
+	float           *work_forward_a;
+	float           *work_forward_b;
+	int              work_forward_size;
+	float           *work_delta_a;
+	float           *work_delta_b;
+	int              work_delta_size;
+	float           *work_grad_w;
+	float           *work_grad_b;
+	int              work_grad_w_size;
+	int              work_grad_b_size;
 } SequentialModel;
 
 typedef struct {
@@ -144,6 +155,11 @@ int sequential_model_compile(SequentialModel *model,
  * `inputs` and `targets` must be contiguous row-major buffers:
  * - inputs:  [num_samples * input_size]
  * - targets: [num_samples * target_size]
+ * `batch_size` controls how many samples are grouped per gradient update:
+ * - 1           : stochastic gradient descent (one update per sample)
+ * - num_samples : full-batch gradient descent
+ * - any value in between: mini-batch
+ * Values > num_samples are clamped automatically.
  * Returns 0 on success, -1 on invalid input or failure.
  */
 int sequential_model_train(SequentialModel *model,
@@ -153,6 +169,7 @@ int sequential_model_train(SequentialModel *model,
 					   int input_size,
 					   int target_size,
 					   int epochs,
+					   int batch_size,
 					   float *final_loss_out);
 
 /*
@@ -199,21 +216,8 @@ int sequential_model_train_step_cfg(SequentialModel *model,
 							float *loss_out);
 
 /*
- * One training step using MSE loss + SGD on a sequential model.
- * Uses lossfunctions and optimizers modules internally.
- * - `loss_out` is optional and may be NULL.
- * Returns 0 on success, -1 on invalid input or failure.
- */
-int sequential_model_train_step_sgd(SequentialModel *model,
-									const float *input,
-									const float *target,
-									float *output,
-									float learning_rate,
-									float *loss_out);
-
-/*
- * One training step using MSE loss on a sequential model.
- * Optimizer is selected at runtime with `optimizer`.
+ * One training step with selectable loss and optimizer.
+ * - `loss_function`: LOSS_MSE or LOSS_BCE.
  * - For OPTIMIZER_SGD: `adam_state` is ignored and may be NULL.
  * - For OPTIMIZER_ADAM: `adam_state` must be fully initialized.
  * - For OPTIMIZER_RMSPROP: `adam_state->m_w/m_b` are used as caches and
@@ -222,98 +226,32 @@ int sequential_model_train_step_sgd(SequentialModel *model,
  * Returns 0 on success, -1 on invalid input or failure.
  */
 int sequential_model_train_step(SequentialModel *model,
-								const float *input,
-								const float *target,
-								float *output,
-								OptimizerType optimizer,
-								float learning_rate,
-								AdamOptimizerState *adam_state,
-								float *loss_out);
+							const float *input,
+							const float *target,
+							float *output,
+							LossFunctionType loss_function,
+							OptimizerType optimizer,
+							float learning_rate,
+							AdamOptimizerState *adam_state,
+							float *loss_out);
 
-/*
- * One training step with selectable loss and optimizer.
- * - `loss_function`: LOSS_MSE or LOSS_BCE.
- * - For OPTIMIZER_ADAM: `adam_state` must be fully initialized.
- * - For OPTIMIZER_RMSPROP: `adam_state->m_w/m_b` are used as caches and
- *   `adam_state->beta1` is used as RMSProp beta.
- * Returns 0 on success, -1 on invalid input or failure.
- */
-int sequential_model_train_step_with_loss(SequentialModel *model,
-									  const float *input,
-									  const float *target,
-									  float *output,
-									  LossFunctionType loss_function,
-									  OptimizerType optimizer,
-									  float learning_rate,
-									  AdamOptimizerState *adam_state,
-									  float *loss_out);
-
-/* One training step with MSE loss and selectable optimizer. */
-int sequential_model_train_step_mse(SequentialModel *model,
-								const float *input,
-								const float *target,
-								float *output,
-								OptimizerType optimizer,
-								float learning_rate,
-								AdamOptimizerState *adam_state,
-								float *loss_out);
-
-/* One training step with BCE loss and selectable optimizer. */
-int sequential_model_train_step_bce(SequentialModel *model,
-								const float *input,
-								const float *target,
-								float *output,
-								OptimizerType optimizer,
-								float learning_rate,
-								AdamOptimizerState *adam_state,
-								float *loss_out);
+#endif /* MODELS_H */
 
 /*
  * Backward + update step for a model after an explicit forward pass.
  * `prediction` must be the latest output produced by sequential_model_forward
  * for the same model/input (backward uses cached activations in layers).
- * Uses MSE loss.
+ * - `loss_function`: LOSS_MSE or LOSS_BCE.
  * Returns 0 on success, -1 on invalid input or failure.
  */
 int sequential_model_optimize_from_prediction(SequentialModel *model,
 									 const float *prediction,
 									 const float *target,
+									 LossFunctionType loss_function,
 									 OptimizerType optimizer,
 									 float learning_rate,
 									 AdamOptimizerState *adam_state,
 									 float *loss_out);
-
-/*
- * Backward + update after forward with selectable loss and optimizer.
- * - `loss_function`: LOSS_MSE or LOSS_BCE.
- * Returns 0 on success, -1 on invalid input or failure.
- */
-int sequential_model_optimize_from_prediction_with_loss(SequentialModel *model,
-											const float *prediction,
-											const float *target,
-											LossFunctionType loss_function,
-											OptimizerType optimizer,
-											float learning_rate,
-											AdamOptimizerState *adam_state,
-											float *loss_out);
-
-/* Backward + update with MSE loss after explicit forward pass. */
-int sequential_model_optimize_from_prediction_mse(SequentialModel *model,
-									  const float *prediction,
-									  const float *target,
-									  OptimizerType optimizer,
-									  float learning_rate,
-									  AdamOptimizerState *adam_state,
-									  float *loss_out);
-
-/* Backward + update with BCE loss after explicit forward pass. */
-int sequential_model_optimize_from_prediction_bce(SequentialModel *model,
-									  const float *prediction,
-									  const float *target,
-									  OptimizerType optimizer,
-									  float learning_rate,
-									  AdamOptimizerState *adam_state,
-									  float *loss_out);
 
 /*
  * Runs a forward pass through all layers.
@@ -323,23 +261,10 @@ int sequential_model_optimize_from_prediction_bce(SequentialModel *model,
 int sequential_forward(Layer *layers, int num_layers, const float *input, float *output);
 
 /*
- * Performs one training step with MSE loss + SGD updates.
- * - `grads_w[i]` must point to a buffer of size output_size * input_size for layer i.
- * - `grads_b[i]` must point to a buffer of size output_size for layer i.
- * - `loss_out` is optional and may be NULL.
- * Returns 0 on success, -1 on invalid input or failure.
- */
-int sequential_train_step_sgd(Layer *layers, int num_layers,
-							  const float *input, const float *target,
-							  float *output,
-							  float **grads_w, float **grads_b,
-							  float learning_rate,
-							  float *loss_out);
-
-/*
- * Performs one training step with MSE loss and selectable optimizer.
+ * Performs one training step with selectable loss and optimizer.
  * - `grads_w[i]` must point to output_size * input_size for layer i.
  * - `grads_b[i]` must point to output_size for layer i.
+ * - `loss_function`: LOSS_MSE or LOSS_BCE.
  * - For OPTIMIZER_SGD: `adam_state` is ignored and may be NULL.
  * - For OPTIMIZER_ADAM: `adam_state` must be fully initialized.
  * - For OPTIMIZER_RMSPROP: `adam_state->m_w/m_b` are used as caches and
@@ -348,94 +273,26 @@ int sequential_train_step_sgd(Layer *layers, int num_layers,
  * Returns 0 on success, -1 on invalid input or failure.
  */
 int sequential_train_step(Layer *layers, int num_layers,
-						  const float *input, const float *target,
-						  float *output,
-						  float **grads_w, float **grads_b,
-						  OptimizerType optimizer,
-						  float learning_rate,
-						  AdamOptimizerState *adam_state,
-						  float *loss_out);
-
-/*
- * One training step with selectable loss and optimizer for layer-array API.
- * - `loss_function`: LOSS_MSE or LOSS_BCE.
- * Returns 0 on success, -1 on invalid input or failure.
- */
-int sequential_train_step_with_loss(Layer *layers, int num_layers,
-							 const float *input, const float *target,
-							 float *output,
-							 float **grads_w, float **grads_b,
-							 LossFunctionType loss_function,
-							 OptimizerType optimizer,
-							 float learning_rate,
-							 AdamOptimizerState *adam_state,
-							 float *loss_out);
-
-/* One training step with MSE loss and selectable optimizer. */
-int sequential_train_step_mse(Layer *layers, int num_layers,
-						 const float *input, const float *target,
-						 float *output,
-						 float **grads_w, float **grads_b,
-						 OptimizerType optimizer,
-						 float learning_rate,
-						 AdamOptimizerState *adam_state,
-						 float *loss_out);
-
-/* One training step with BCE loss and selectable optimizer. */
-int sequential_train_step_bce(Layer *layers, int num_layers,
-						 const float *input, const float *target,
-						 float *output,
-						 float **grads_w, float **grads_b,
-						 OptimizerType optimizer,
-						 float learning_rate,
-						 AdamOptimizerState *adam_state,
-						 float *loss_out);
-
+					  const float *input, const float *target,
+					  float *output,
+					  float **grads_w, float **grads_b,
+					  LossFunctionType loss_function,
+					  OptimizerType optimizer,
+					  float learning_rate,
+					  AdamOptimizerState *adam_state,
+					  float *loss_out);
 /*
  * Backward + update step after an explicit forward pass with sequential_forward.
  * `prediction` must be the latest output produced by sequential_forward
  * for the same layers/input.
- * Uses MSE loss.
- * Returns 0 on success, -1 on invalid input or failure.
- */
-int sequential_optimize_from_prediction(Layer *layers, int num_layers,
-							 const float *prediction, const float *target,
-							 float **grads_w, float **grads_b,
-							 OptimizerType optimizer,
-							 float learning_rate,
-							 AdamOptimizerState *adam_state,
-							 float *loss_out);
-
-/*
- * Backward + update after forward with selectable loss and optimizer.
  * - `loss_function`: LOSS_MSE or LOSS_BCE.
  * Returns 0 on success, -1 on invalid input or failure.
  */
-int sequential_optimize_from_prediction_with_loss(Layer *layers, int num_layers,
-								  const float *prediction, const float *target,
-								  float **grads_w, float **grads_b,
-								  LossFunctionType loss_function,
-								  OptimizerType optimizer,
-								  float learning_rate,
-								  AdamOptimizerState *adam_state,
-								  float *loss_out);
-
-/* Backward + update with MSE loss after explicit forward pass. */
-int sequential_optimize_from_prediction_mse(Layer *layers, int num_layers,
-							 const float *prediction, const float *target,
-							 float **grads_w, float **grads_b,
-							 OptimizerType optimizer,
-							 float learning_rate,
-							 AdamOptimizerState *adam_state,
-							 float *loss_out);
-
-/* Backward + update with BCE loss after explicit forward pass. */
-int sequential_optimize_from_prediction_bce(Layer *layers, int num_layers,
-							 const float *prediction, const float *target,
-							 float **grads_w, float **grads_b,
-							 OptimizerType optimizer,
-							 float learning_rate,
-							 AdamOptimizerState *adam_state,
-							 float *loss_out);
-
-#endif /* MODELS_H */
+int sequential_optimize_from_prediction(Layer *layers, int num_layers,
+						 const float *prediction, const float *target,
+						 float **grads_w, float **grads_b,
+						 LossFunctionType loss_function,
+						 OptimizerType optimizer,
+						 float learning_rate,
+						 AdamOptimizerState *adam_state,
+						 float *loss_out);

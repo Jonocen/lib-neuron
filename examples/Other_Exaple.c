@@ -20,7 +20,7 @@ int main(void) {
     for (int epoch = 0; epoch < 5000; epoch++) {
         epoch_loss = 0.0f;
         for (int i = 0; i < 4; i++) {
-            if (sequential_train_step_with_loss(layers,
+            if (sequential_train_step(layers,
                                                 2,
                                                 x[i],
                                                 y[i],
