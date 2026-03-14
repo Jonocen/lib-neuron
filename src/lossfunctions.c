@@ -46,3 +46,34 @@ int loss_bce_grad(const float *pred, const float *target, int size, float *grad_
 	}
 	return 0;
 }
+
+float loss_huber(const float *pred, const float *target, int size, float delta) {
+	if (!pred || !target || size <= 0 || delta <= 0.0f) return -1.0f;
+
+	float sum = 0.0f;
+	for (int i = 0; i < size; i++) {
+		float e = pred[i] - target[i];
+		float a = fabsf(e);
+		if (a <= delta) {
+			sum += 0.5f * e * e;
+		} else {
+			sum += delta * (a - 0.5f * delta);
+		}
+	}
+
+	return sum / (float)size;
+}
+
+int loss_huber_grad(const float *pred, const float *target, int size, float delta, float *grad_out) {
+	if (!pred || !target || !grad_out || size <= 0 || delta <= 0.0f) return -1;
+
+	for (int i = 0; i < size; i++) {
+		float e = pred[i] - target[i];
+		float a = fabsf(e);
+		grad_out[i] = (a <= delta)
+			? (e / (float)size)
+			: (((e > 0.0f) ? delta : -delta) / (float)size);
+	}
+
+	return 0;
+}

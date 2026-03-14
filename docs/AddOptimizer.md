@@ -1,17 +1,46 @@
-# Add a New Optimizer (Step by Step)
+# Add a New Optimizer (Beginner Guide)
 
-This guide shows how to add a new optimizer end-to-end in `lib-neuron`.
+This guide is for beginners who want to add a new optimizer safely in `lib-neuron`.
 
-Use this checklist in order.
+Goal:
+- Add one new optimizer (example: `Adagrad`)
+- Make it usable in all training APIs
+- Keep project behavior consistent (`0` success, `-1` failure)
 
-## 1. Add the optimizer type
+You can follow this exactly, top to bottom.
+
+## Before You Start
+
+You will edit these files:
+
+1. `include/optimizers.h`
+2. `src/optimizers.c`
+3. `src/models.c`
+4. `docs/Training.md`
+5. `docs/APIReference.md`
+
+Run this after each big step:
+
+```sh
+make
+```
+
+## Mental Model (Simple)
+
+An optimizer in this project is:
+
+1. A math function that updates weights from gradients.
+2. A new enum value (`OptimizerType`) so code can select it.
+3. A state mapping (if it needs memory across steps).
+4. Wiring in `models.c` so training loops call it.
+
+If one of these is missing, the optimizer will not work end-to-end.
+
+## Step 1. Add the enum + function declaration
 
 Edit `include/optimizers.h`.
 
-- Add a new enum value in `OptimizerType`.
-- Keep existing values unchanged if you want to preserve compatibility.
-
-Example:
+Add your optimizer enum value:
 
 ```c
 typedef enum {
@@ -22,11 +51,7 @@ typedef enum {
 } OptimizerType;
 ```
 
-## 2. Add function declaration
-
-Still in `include/optimizers.h`, declare the optimizer function.
-
-Example:
+Add function declaration:
 
 ```c
 int adagrad_optimizer(float *weights,
@@ -36,22 +61,17 @@ int adagrad_optimizer(float *weights,
                       int size);
 ```
 
-## 3. Implement optimizer math
+Why:
+- Enum makes the optimizer selectable.
+- Declaration lets other files call the function.
 
-Edit `src/optimizers.c`.
+## Step 2. Implement optimizer math
 
-- Add argument validation.
-- Apply in-place updates to `weights`.
-- Update state buffers (if needed).
-
-Example skeleton:
+Edit `src/optimizers.c` and add:
 
 ```c
-int adagrad_optimizer(float *weights,
-                      float *grads,
-                      float *accumulator,
-                      float learning_rate,
-                      int size) {
+int adagrad_optimizer(float *weights, float *grads, float *accumulator,
+                      float learning_rate, int size) {
     if (!weights || !grads || !accumulator || size <= 0) return -1;
     if (learning_rate <= 0.0f) return -1;
 
@@ -64,43 +84,65 @@ int adagrad_optimizer(float *weights,
 }
 ```
 
-## 4. Decide optimizer state shape
+Why:
+- `accumulator` stores running squared gradients.
+- It must persist between steps, so it is optimizer state.
 
-Edit `include/models.h` and use `OptimizerState` fields.
+## Step 3. Choose state mapping
 
-Current state fields:
+`lib-neuron` already has `OptimizerState` in `include/models.h`.
 
-- `m_w`, `m_b`
-- `v_w`, `v_b`
-- `step`, `beta1`, `beta2`
+For Adagrad, use:
 
-For new optimizers, map these fields clearly.
+- `m_w` and `m_b` as accumulators
+- `v_w` and `v_b` unused
+- `step` unused
+- `beta1/beta2` unused
 
-Example mapping for Adagrad:
+Code snippet (mapping idea):
 
-- `m_w` and `m_b`: accumulators
-- `v_w` and `v_b`: unused
-- `step`: unused
-- `beta1`, `beta2`: unused
+```c
+/* Adagrad state mapping in this project:
+ * - m_w / m_b: accumulators
+ * - v_w / v_b: unused
+ * - step: unused
+ * - beta1 / beta2: unused
+ */
+static int adagrad_optimizer_state_valid(const OptimizerState *optimizer_state) {
+    if (!optimizer_state) return 0;
+    if (!optimizer_state->m_w || !optimizer_state->m_b) return 0;
+    return 1;
+}
+```
 
-If you need new state values, add them to `OptimizerState` carefully and update all init/free paths.
+This avoids adding a new struct and keeps code simpler.
 
-## 5. Wire update path in models
+## Step 4. Validate state in `src/models.c`
 
-Edit `src/models.c`.
+Add a helper similar to existing ones:
 
-### 5.1 Update state validation
+```c
+static int adagrad_optimizer_state_valid(const OptimizerState *optimizer_state) {
+    if (!optimizer_state) return 0;
+    if (!optimizer_state->m_w || !optimizer_state->m_b) return 0;
+    return 1;
+}
+```
 
-Add your optimizer branch in `optimizer_state_valid(...)`.
+Then extend `optimizer_state_valid(...)`:
 
-- Return `1` for valid state, `0` for invalid.
-- For stateless optimizer, allow `NULL` state.
+```c
+if (optimizer == OPTIMIZER_ADAGRAD) {
+    return adagrad_optimizer_state_valid(optimizer_state);
+}
+```
 
-### 5.2 Update optimizer dispatch
+Why:
+- Training should fail early if required state is missing.
 
-In `apply_optimizer_update(...)`, add a branch for your optimizer.
+## Step 5. Add dispatch in `apply_optimizer_update(...)`
 
-Example pattern:
+In `src/models.c`, extend optimizer dispatch:
 
 ```c
 if (optimizer == OPTIMIZER_ADAGRAD) {
@@ -113,81 +155,79 @@ if (optimizer == OPTIMIZER_ADAGRAD) {
 }
 ```
 
-### 5.3 Select per-layer state pointers
+Why:
+- This is the central place where optimizers are called.
 
-In training loops (`sequential_model_train_with_progress`,
-`sequential_model_optimize_from_prediction`, and
-`sequential_optimize_from_prediction`), add pointer wiring similar to Adam/RMSProp:
+## Step 6. Allow compile/config paths to accept new optimizer
 
-- Choose the correct state arrays per layer.
-- Pass them to `apply_optimizer_update(...)`.
+Still in `src/models.c`, update checks that list allowed optimizers.
 
-## 6. Initialize optimizer state
+Typical places:
 
-Use `sequential_model_optimizer_state_init(...)` logic in `src/models.c`.
-
-- Add your optimizer-specific validation.
-- Allocate only the buffers your optimizer needs.
-- Keep zero-initialized state.
-
-Also ensure cleanup works in:
-
-- `sequential_model_optimizer_state_free(...)`
-- compile reconfigure paths that free/re-init state
-
-## 7. Compile-time integration
-
-Ensure compile APIs accept your optimizer:
-
-- `sequential_model_compile(...)`
 - `sequential_model_compile_optimizer(...)`
+- `sequential_model_optimizer_state_init(...)`
 
-Checklist:
+Add `OPTIMIZER_ADAGRAD` to the allowed set.
 
-- optimizer enum accepted
-- required hyperparameter checks added
-- internal state initialized for your optimizer when needed
+Then ensure compile-time state ownership includes Adagrad, same style as Adam/RMSProp.
 
-## 8. Config helper integration
+## Step 7. Wire per-layer state pointers in training loops
 
-If helpful, add a config helper in `include/models.h` and `src/models.c`.
+In these functions:
 
-Example:
+1. `sequential_model_train_with_progress(...)`
+2. `sequential_model_optimize_from_prediction(...)`
+3. `sequential_optimize_from_prediction(...)`
 
-```c
-void sequential_train_config_init_adagrad(SequentialTrainConfig *cfg,
-                                          LossFunctionType loss_function,
-                                          float learning_rate,
-                                          OptimizerState *optimizer_state);
-```
+When optimizer is Adagrad, set:
 
-This keeps training call sites simple.
+- `opt_state_w_a = optimizer_state->m_w[l];`
+- `opt_state_b_a = optimizer_state->m_b[l];`
 
-## 9. Documentation updates
+Why:
+- Adagrad needs one accumulator per parameter.
 
-Update docs so users can discover and use the new optimizer.
+## Step 8. Keep state init/free compatible
 
-Minimum files:
+In `sequential_model_optimizer_state_init(...)`:
 
-- `docs/Training.md`
-- `docs/APIReference.md`
-- this file (`docs/AddOptimizer.md`) if steps changed
+- Accept `OPTIMIZER_ADAGRAD`.
+- Allocate `m_w` and `m_b` arrays.
+- `v_w`/`v_b` may remain unused for Adagrad.
 
-## 10. Sanity checks
+In `sequential_model_optimizer_state_free(...)`:
 
-Run these before merging:
+- No special change if all arrays are already freed generically.
+
+## Step 9. Update docs
+
+Update:
+
+1. `docs/Training.md`
+2. `docs/APIReference.md`
+
+Add:
+
+- enum value `OPTIMIZER_ADAGRAD`
+- function `adagrad_optimizer(...)`
+- brief usage guidance (typical learning rates)
+
+## Step 10. Beginner test checklist
+
+Run all of these:
 
 1. `make`
-2. Train a tiny model with the new optimizer.
-3. Verify loss decreases on a simple dataset.
-4. Test failure behavior with invalid args (expects `-1`).
+2. Train a tiny model with `OPTIMIZER_ADAGRAD`
+3. Confirm loss goes down
+4. Try invalid input (like `NULL` accumulator) and confirm `-1`
 
-## 11. Minimal usage example
+## Copy-Paste Example Usage
 
 ```c
 OptimizerState state = {0};
 float loss = 0.0f;
 
+/* For Adagrad, beta params are ignored by current implementation. */
 sequential_model_optimizer_state_init(&model,
                                       &state,
                                       OPTIMIZER_ADAGRAD,
@@ -207,6 +247,11 @@ sequential_model_train_step(&model,
 sequential_model_optimizer_state_free(&model, &state);
 ```
 
-Note:
-- The `beta1/beta2` parameters are currently shared generic parameters.
-- If your optimizer does not use them, document that clearly and ignore them safely.
+## Common Mistakes
+
+1. Added enum, but forgot to add branch in `apply_optimizer_update(...)`.
+2. Added update branch, but forgot training-loop state pointer wiring.
+3. Forgot to allow optimizer in compile/validation checks.
+4. Forgot docs update, so users cannot discover the feature.
+
+If you hit one of these, the optimizer often compiles but fails at runtime with `-1`.

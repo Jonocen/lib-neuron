@@ -6,7 +6,7 @@ This page explains the training flow in `lib-neuron`.
 
 - `matrixcalculation`: `layer_forward`, `layer_backward`, `conv2d_layer_forward`, `maxpool2d_layer_forward`
 - `lossfunctions`: `loss_mse`, `loss_mse_grad`, `loss_bce`, `loss_bce_grad`
-- `optimizers`: `sgd_optimizer`, `adam_optimizer`, `rmsprop_optimizer`
+- `optimizers`: `sgd_optimizer`, `adam_optimizer`, `rmsprop_optimizer`, `adagrad_optimizer`
 - `models`: sequential helpers
 
 Loss selection in models (`loss_function` parameter accepts `LOSS_MSE` or `LOSS_BCE`):
@@ -81,7 +81,7 @@ sequential_model_train_with_progress(&model,
 									 4,
 									 2,
 									 1,
-									 5000,
+									- `loss_function`: LOSS_MSE, LOSS_BCE, or LOSS_HUBER.
 									 1,
 									 10,   // print every 10%
 									 &loss);
@@ -132,7 +132,7 @@ sequential_model_optimize_from_prediction(&model,
 Both do this sequence each step:
 
 1. Forward pass
-2. Compute selected loss (MSE or BCE)
+2. Compute selected loss (MSE, BCE, or Huber)
 3. Compute output gradient
 4. Backpropagate layer-by-layer
 5. Update weights/biases with the selected optimizer
@@ -206,6 +206,7 @@ Keep RMSProp caches persistent across all training steps.
 - Keep initialization small (for XOR, small random weights help convergence).
 - Use different learning rates per optimizer.
 - For XOR examples: `SGD` works well near `0.05f`, while `Adam` and `RMSProp` are often stable near `0.005f`.
+- `Adagrad` is often stable around `0.01f` to `0.05f` for small dense models.
 - If training stalls near 0.5 predictions, test different seeds/init scale.
 - BCE can work better than MSE for sigmoid-based binary outputs.
 

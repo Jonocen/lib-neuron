@@ -4,7 +4,8 @@
 typedef enum {
     OPTIMIZER_SGD = 0,
     OPTIMIZER_ADAM = 1,
-    OPTIMIZER_RMSPROP = 2
+    OPTIMIZER_RMSPROP = 2,
+    OPTIMIZER_ADAGRAD = 3
 } OptimizerType;
 
 /*
@@ -24,5 +25,7 @@ int adam_optimizer(float *weights, float *grads, float *m, float *v,
 int sgd_optimizer(float *weights, float *grads, float learning_rate, int size);
 
 int rmsprop_optimizer(float *weights, float *grads, float *cache, float beta, float learning_rate, int size);
+
+int adagrad_optimizer(float *weights, float *grads, float *accumulator, float learning_rate, int size);
 
 #endif /* OPTIMIZERS_H */

@@ -49,3 +49,16 @@ int rmsprop_optimizer(float *weights, float *grads, float *cache,
 
     return 0;
 }
+
+int adagrad_optimizer(float *weights, float *grads, float *accumulator,
+                      float learning_rate, int size) {
+    if (!weights || !grads || !accumulator || size <= 0) return -1;
+    if (learning_rate <= 0.0f) return -1;
+
+    for (int i = 0; i < size; i++) {
+        accumulator[i] += grads[i] * grads[i];
+        weights[i] -= learning_rate * grads[i] / (sqrtf(accumulator[i]) + 1e-8f);
+    }
+
+    return 0;
+}

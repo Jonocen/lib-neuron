@@ -29,11 +29,13 @@ Scope:
 - `OPTIMIZER_SGD`
 - `OPTIMIZER_ADAM`
 - `OPTIMIZER_RMSPROP`
+- `OPTIMIZER_ADAGRAD`
 
 ### `LossFunctionType`
 
 - `LOSS_MSE`
 - `LOSS_BCE`
+- `LOSS_HUBER`
 
 ## `matrixcalculation.h`
 
@@ -124,6 +126,12 @@ Scope:
 `int loss_bce_grad(const float *pred, const float *target, int size, float *grad_out)`
 - Computes gradient of BCE with respect to predictions into `grad_out`.
 
+`float loss_huber(const float *pred, const float *target, int size, float delta)`
+- Computes Huber loss between prediction and target vectors.
+
+`int loss_huber_grad(const float *pred, const float *target, int size, float delta, float *grad_out)`
+- Computes gradient of Huber with respect to predictions into `grad_out`.
+
 ## `optimizers.h`
 
 `int adam_optimizer(float *weights, float *grads, float *m, float *v, float beta1, float beta2, float learning_rate, int t, int size)`
@@ -135,6 +143,9 @@ Scope:
 
 `int rmsprop_optimizer(float *weights, float *grads, float *cache, float beta, float learning_rate, int size)`
 - Applies one in-place RMSProp update to `weights` using running `cache`.
+
+`int adagrad_optimizer(float *weights, float *grads, float *accumulator, float learning_rate, int size)`
+- Applies one in-place Adagrad update to `weights` using running squared-gradient `accumulator`.
 
 ## `models.h`
 

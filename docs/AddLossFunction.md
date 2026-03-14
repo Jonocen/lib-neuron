@@ -1,17 +1,40 @@
-# Add a New Loss Function (Step by Step)
+# Add a New Loss Function (Beginner Guide)
 
-This guide shows how to add a new loss function end-to-end in `lib-neuron`.
+This guide is for beginners who want to add a new loss function safely in `lib-neuron`.
 
-Use this checklist in order.
+Goal:
+- Add one new loss (example: `Huber`)
+- Make it work in all training APIs
+- Keep project behavior consistent (`0` success, `-1` failure)
 
-## 1. Add loss enum value
+## Before You Start
 
-Edit `include/lossfunctions.h`.
+You will edit these files:
 
-- Add a new value in `LossFunctionType`.
-- Keep existing values stable if you care about compatibility.
+1. `include/lossfunctions.h`
+2. `src/lossfunctions.c`
+3. `src/models.c`
+4. `docs/Training.md`
+5. `docs/APIReference.md`
 
-Example:
+Run this after each big step:
+
+```sh
+make
+```
+
+## Mental Model (Simple)
+
+A loss in this project has 2 parts:
+
+1. A value function (example: `loss_huber`) that returns a single float.
+2. A gradient function (example: `loss_huber_grad`) that fills `grad_out`.
+
+If you only add one of these, training will not work.
+
+## Step 1. Add enum value
+
+Edit `include/lossfunctions.h` and add your new enum value.
 
 ```c
 typedef enum {
@@ -21,35 +44,35 @@ typedef enum {
 } LossFunctionType;
 ```
 
-## 2. Add function declarations
+If not already there:
 
-Still in `include/lossfunctions.h`, add both value and gradient functions.
+- Add `LOSS_HUBER = 2` (or the next free value).
+- Save and run `make`.
 
-Example:
+## Step 2. Add declarations
+
+Still in `include/lossfunctions.h`, add both declarations:
 
 ```c
 float loss_huber(const float *pred, const float *target, int size, float delta);
 int loss_huber_grad(const float *pred, const float *target, int size, float delta, float *grad_out);
 ```
 
-Important:
-- Every new loss must have a gradient function because training uses backpropagation from loss gradients.
+If not already there:
 
-## 3. Implement math in `src/lossfunctions.c`
+- Add both lines.
+- If only one exists, you will get compile/link errors later.
 
-Add both functions with input validation and numerically safe behavior.
+## Step 3. Implement the math
 
-General rules:
+Edit `src/lossfunctions.c` and add both function definitions.
 
-- Return `-1.0f` for invalid args in value functions.
-- Return `-1` for invalid args in gradient functions.
-- Keep gradient shape exactly equal to prediction shape (`size`).
-
-Example skeleton:
+Copy this starter:
 
 ```c
 float loss_huber(const float *pred, const float *target, int size, float delta) {
     if (!pred || !target || size <= 0 || delta <= 0.0f) return -1.0f;
+
     float sum = 0.0f;
     for (int i = 0; i < size; i++) {
         float e = pred[i] - target[i];
@@ -60,32 +83,36 @@ float loss_huber(const float *pred, const float *target, int size, float delta) 
             sum += delta * (a - 0.5f * delta);
         }
     }
+
     return sum / (float)size;
 }
 
 int loss_huber_grad(const float *pred, const float *target, int size, float delta, float *grad_out) {
     if (!pred || !target || !grad_out || size <= 0 || delta <= 0.0f) return -1;
+
     for (int i = 0; i < size; i++) {
         float e = pred[i] - target[i];
         float a = fabsf(e);
-        grad_out[i] = (a <= delta) ? (e / (float)size)
-                                   : ((e > 0 ? delta : -delta) / (float)size);
+        grad_out[i] = (a <= delta)
+            ? (e / (float)size)
+            : (((e > 0.0f) ? delta : -delta) / (float)size);
     }
+
     return 0;
 }
 ```
 
-## 4. Wire the loss into model training
+Checklist:
+
+- `#include <math.h>` exists.
+- Value function returns `-1.0f` on invalid input.
+- Gradient function returns `-1` on invalid input.
+
+## Step 4. Wire into training flow
 
 Edit `src/models.c` in `compute_loss_and_grad(...)`.
 
-Add a branch for your new enum:
-
-- compute scalar loss into `loss_out` when not `NULL`
-- fill `grad_out` using your gradient function
-- return `0` on success or `-1` on failure
-
-Example pattern:
+Add a `LOSS_HUBER` branch:
 
 ```c
 if (loss_function == LOSS_HUBER) {
@@ -96,19 +123,36 @@ if (loss_function == LOSS_HUBER) {
 }
 ```
 
-## 5. Update validation checks
+Notes:
 
-In `src/models.c`, update checks that currently allow only `LOSS_MSE` and `LOSS_BCE`.
+- `1.0f` is a default delta.
+- If you want configurable delta, add it to API later.
 
-Most important place:
+## Step 5. Allow Huber in compile validation
 
-- `sequential_model_compile(...)` (or `sequential_model_compile_optimizer(...)` if using generic API)
+In `src/models.c`, find loss checks like this:
 
-Make sure your new loss is accepted.
+```c
+if (loss_function != LOSS_MSE && loss_function != LOSS_BCE) return -1;
+```
 
-## 6. Keep API behavior consistent
+Update to:
 
-Your loss should work in all training entry points automatically once step 4 is done:
+```c
+if (loss_function != LOSS_MSE &&
+    loss_function != LOSS_BCE &&
+    loss_function != LOSS_HUBER) return -1;
+```
+
+If not already there:
+
+- Update `sequential_model_compile_optimizer(...)` first.
+
+## Step 6. Confirm all training APIs are covered
+
+You do not need to edit every train function if they all call `compute_loss_and_grad(...)`.
+
+That single shared function powers:
 
 - `sequential_model_train_step(...)`
 - `sequential_model_optimize_from_prediction(...)`
@@ -117,27 +161,30 @@ Your loss should work in all training entry points automatically once step 4 is 
 - `sequential_model_train(...)`
 - `sequential_model_train_with_progress(...)`
 
-Reason: these flows all pass through shared loss/gradient logic.
-
-## 7. Add docs
+## Step 7. Update docs
 
 Update at least:
 
-- `docs/Training.md`
-- `docs/APIReference.md`
-- this file (`docs/AddLossFunction.md`) when process changes
+1. `docs/Training.md`
+2. `docs/APIReference.md`
+3. this file (`docs/AddLossFunction.md`) when process changes
 
-## 8. Sanity checks
+Add:
 
-Run before merging:
+- `LOSS_HUBER` enum entry
+- `loss_huber(...)` and `loss_huber_grad(...)` API entries
+
+## Step 8. Beginner test checklist
+
+Run this:
 
 1. `make`
-2. Small training run with the new loss.
-3. Verify loss decreases.
-4. Verify invalid arguments return `-1` / `-1.0f`.
-5. Verify gradient has no NaN/Inf on normal inputs.
+2. Train a tiny model with `LOSS_HUBER`
+3. Confirm loss decreases
+4. Confirm invalid args return `-1` / `-1.0f`
+5. Confirm gradient has no NaN/Inf
 
-## 9. Minimal usage example
+## Copy-Paste Example Usage
 
 ```c
 sequential_model_compile(&model,
@@ -158,9 +205,16 @@ sequential_model_train(&model,
                        &final_loss);
 ```
 
-## 10. Common pitfalls
+## Quick Troubleshooting
 
-- Forgetting to add the gradient function.
-- Adding enum and implementation, but not updating compile-time loss validation.
-- Not protecting against numerical issues (for example `log(0)` in BCE-style losses).
-- Returning a wrong gradient scale (missing divide by `size` if your other losses are averaged).
+- `unknown identifier LOSS_HUBER`:
+  Step 1 not done, or old header is being used.
+
+- `undefined reference to loss_huber`:
+  Step 3 implementation missing in `src/lossfunctions.c`.
+
+- Training returns `-1` when using Huber:
+  Step 5 validation check not updated.
+
+- Build passes but no learning:
+  Check gradient scale and learning rate.
