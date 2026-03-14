@@ -84,7 +84,7 @@ gcc my_first_nn.c -Iinclude -L. -lneuron -lm -o my_first_nn
 
 - Train in a loop over a dataset (like XOR examples).
 - Try `ACT_TANH` or `ACT_RELU` in hidden layers.
-- Switch optimizer with `OPTIMIZER_SGD` / `OPTIMIZER_ADAM`.
+- Switch optimizer with `OPTIMIZER_SGD` / `OPTIMIZER_ADAM` / `OPTIMIZER_RMSPROP`.
 - Switch loss with `LOSS_MSE` / `LOSS_BCE`.
 - Use `sequential_model_compile` + `sequential_model_train` for the shortest training flow.
 - Check full working examples in `examples/`.

@@ -6,7 +6,7 @@ This page explains the training flow in `lib-neuron`.
 
 - `matrixcalculation`: `layer_forward`, `layer_backward`
 - `lossfunctions`: `loss_mse`, `loss_mse_grad`, `loss_bce`, `loss_bce_grad`
-- `optimizers`: `sgd_optimizer`, `adam_optimizer`
+- `optimizers`: `sgd_optimizer`, `adam_optimizer`, `rmsprop_optimizer`
 - `models`: sequential helpers
 
 Loss selection in models:
@@ -149,10 +149,39 @@ sequential_train_step(layers, num_layers, input, target, output,
 
 For stable training, keep `m`, `v`, and `t` persistent across all epochs/batches.
 
+## Using RMSProp with sequential helpers
+
+Set optimizer to `OPTIMIZER_RMSPROP` and pass an initialized `AdamOptimizerState`.
+
+For RMSProp in this API, the state is reused like this:
+
+- `m_w` / `m_b`: RMSProp caches for weights/biases
+- `beta1`: RMSProp decay (usually `0.9f`)
+- `v_w` / `v_b` and `step`: ignored for RMSProp updates
+
+Pseudo-usage:
+
+```c
+AdamOptimizerState rms = {0};
+
+sequential_model_adam_state_init(&model, &rms, 0.9f, 0.999f);
+
+sequential_model_train_step(&model,
+							input,
+							target,
+							output,
+							OPTIMIZER_RMSPROP,
+							0.005f,
+							&rms,
+							&loss);
+```
+
+Keep RMSProp caches persistent across all training steps.
+
 ## Practical tips
 
 - Keep initialization small (for XOR, small random weights help convergence).
 - Use different learning rates per optimizer.
-- For XOR examples: `SGD` works well near `0.05f`, while `Adam` is more stable near `0.005f`.
+- For XOR examples: `SGD` works well near `0.05f`, while `Adam` and `RMSProp` are often stable near `0.005f`.
 - If training stalls near 0.5 predictions, test different seeds/init scale.
 - BCE can work better than MSE for sigmoid-based binary outputs.

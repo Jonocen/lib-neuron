@@ -22,7 +22,7 @@ bits auf the layer system, and a bit of overall things i coud not to without.
 
 - **matrixcalculation**: layer structure, activations, forward pass, backpropagation
 - **lossfunctions**: MSE and BCE losses, plus their gradients
-- **optimizers**: SGD and Adam parameter updates
+- **optimizers**: SGD, Adam, and RMSProp parameter updates
 - **models**: simple sequential model helpers
 
 You can include everything with a single header:

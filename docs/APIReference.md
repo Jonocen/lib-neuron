@@ -61,6 +61,7 @@ Defined in `include/optimizers.h`.
 
 - `OPTIMIZER_SGD`
 - `OPTIMIZER_ADAM`
+- `OPTIMIZER_RMSPROP`
 
 ### `LossFunctionType`
 
@@ -81,6 +82,12 @@ Dynamic container of plugin layers.
 
 Persistent state for Adam used by sequential helpers.
 
+This same struct is also reused for RMSProp in sequential helpers:
+
+- `m_w` / `m_b` are used as RMSProp caches
+- `beta1` is used as RMSProp decay
+- `v_w` / `v_b` / `step` are ignored by RMSProp updates
+
 - `m_w`: first moment vectors for each layer weights
 - `v_w`: second moment vectors for each layer weights
 - `m_b`: first moment vectors for each layer biases
@@ -94,9 +101,9 @@ Persistent state for Adam used by sequential helpers.
 Compact training config for sequential model helpers.
 
 - `loss_function`: `LOSS_MSE` or `LOSS_BCE`
-- `optimizer`: `OPTIMIZER_SGD` or `OPTIMIZER_ADAM`
+- `optimizer`: `OPTIMIZER_SGD`, `OPTIMIZER_ADAM`, or `OPTIMIZER_RMSPROP`
 - `learning_rate`: step size
-- `adam_state`: `NULL` for SGD, required for Adam
+- `adam_state`: `NULL` for SGD, required for Adam and RMSProp
 
 ## `matrixcalculation.h`
 
@@ -301,6 +308,23 @@ Returns:
 
 - `0` on success, `-1` on invalid input
 
+### `int rmsprop_optimizer(float *weights, float *grads, float *cache, float beta, float learning_rate, int size)`
+
+Applies one RMSProp update to parameter vector.
+
+Parameters:
+
+- `weights`: parameter vector updated in place, size `[size]`
+- `grads`: gradient vector for current step, size `[size]`
+- `cache`: RMSProp squared-gradient cache (persistent), size `[size]`
+- `beta`: decay factor, typically `0.9f`
+- `learning_rate`: optimizer step size
+- `size`: number of parameters
+
+Returns:
+
+- `0` on success, `-1` on invalid input
+
 ## `models.h`
 
 ### `int sequential_model_init(SequentialModel *model, int initial_capacity)`
@@ -372,7 +396,7 @@ Alias for `sequential_model_forward`.
 
 ### `int sequential_model_compile(SequentialModel *model, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, float adam_beta1, float adam_beta2)`
 
-Stores training settings inside model and allocates Adam state internally when needed.
+Stores training settings inside model and allocates optimizer state internally when needed (Adam and RMSProp).
 
 ### `int sequential_model_train(SequentialModel *model, const float *inputs, const float *targets, int num_samples, int input_size, int target_size, int epochs, float *final_loss_out)`
 
@@ -429,9 +453,9 @@ Parameters:
 - `input`: input vector
 - `target`: expected output vector
 - `output`: output buffer for current prediction
-- `optimizer`: `OPTIMIZER_SGD` or `OPTIMIZER_ADAM`
+- `optimizer`: `OPTIMIZER_SGD`, `OPTIMIZER_ADAM`, or `OPTIMIZER_RMSPROP`
 - `learning_rate`: learning rate for selected optimizer
-- `adam_state`: required for `OPTIMIZER_ADAM`, ignored for `OPTIMIZER_SGD`
+- `adam_state`: required for `OPTIMIZER_ADAM` and `OPTIMIZER_RMSPROP`, ignored for `OPTIMIZER_SGD`
 - `loss_out`: optional pointer receiving MSE loss (`NULL` to ignore)
 
 Returns:
@@ -468,9 +492,9 @@ Parameters:
 - `model`: sequential model with valid cached activations from latest forward
 - `prediction`: latest model output (from corresponding forward pass)
 - `target`: expected output vector
-- `optimizer`: `OPTIMIZER_SGD` or `OPTIMIZER_ADAM`
+- `optimizer`: `OPTIMIZER_SGD`, `OPTIMIZER_ADAM`, or `OPTIMIZER_RMSPROP`
 - `learning_rate`: learning rate for selected optimizer
-- `adam_state`: required for `OPTIMIZER_ADAM`, ignored for `OPTIMIZER_SGD`
+- `adam_state`: required for `OPTIMIZER_ADAM` and `OPTIMIZER_RMSPROP`, ignored for `OPTIMIZER_SGD`
 - `loss_out`: optional pointer receiving MSE loss (`NULL` to ignore)
 
 Returns:
@@ -537,9 +561,9 @@ Parameters:
 - `output`: output buffer for current prediction
 - `grads_w`: per-layer weight gradient buffers (caller-allocated)
 - `grads_b`: per-layer bias gradient buffers (caller-allocated)
-- `optimizer`: `OPTIMIZER_SGD` or `OPTIMIZER_ADAM`
+- `optimizer`: `OPTIMIZER_SGD`, `OPTIMIZER_ADAM`, or `OPTIMIZER_RMSPROP`
 - `learning_rate`: learning rate for selected optimizer
-- `adam_state`: required for `OPTIMIZER_ADAM`, ignored for `OPTIMIZER_SGD`
+- `adam_state`: required for `OPTIMIZER_ADAM` and `OPTIMIZER_RMSPROP`, ignored for `OPTIMIZER_SGD`
 - `loss_out`: optional pointer receiving MSE loss (`NULL` to ignore)
 
 Returns:
@@ -570,9 +594,9 @@ Parameters:
 - `target`: expected output vector
 - `grads_w`: per-layer weight gradient buffers
 - `grads_b`: per-layer bias gradient buffers
-- `optimizer`: `OPTIMIZER_SGD` or `OPTIMIZER_ADAM`
+- `optimizer`: `OPTIMIZER_SGD`, `OPTIMIZER_ADAM`, or `OPTIMIZER_RMSPROP`
 - `learning_rate`: learning rate for selected optimizer
-- `adam_state`: required for `OPTIMIZER_ADAM`, ignored for `OPTIMIZER_SGD`
+- `adam_state`: required for `OPTIMIZER_ADAM` and `OPTIMIZER_RMSPROP`, ignored for `OPTIMIZER_SGD`
 - `loss_out`: optional pointer receiving MSE loss (`NULL` to ignore)
 
 Returns:
