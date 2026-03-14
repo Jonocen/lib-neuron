@@ -71,6 +71,22 @@ sequential_model_train(&model, &x[0][0], &y[0][0], 4, 2, 1, 5000, 1, &loss);
 sequential_model_predict(&model, input, output);
 ```
 
+Compile/train/predict with progress output (print every N%):
+
+```c
+sequential_model_compile(&model, LOSS_MSE, OPTIMIZER_SGD, 0.05f, 0.9f, 0.999f);
+sequential_model_train_with_progress(&model,
+									 &x[0][0],
+									 &y[0][0],
+									 4,
+									 2,
+									 1,
+									 5000,
+									 1,
+									 10,   // print every 10%
+									 &loss);
+```
+
 Mini-batch (batch_size > 1 groups samples before each gradient update):
 
 ```c

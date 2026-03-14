@@ -7,18 +7,19 @@ int main(void) {
     float x[4][2] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
     float y[4][1] = {{0}, {1}, {1}, {0}};
     float out[1], loss;
-    int epochs = 40000000, batch_size = 4096;
+    int epochs = 2000, batch_size = 1;
     SequentialModel model;
 
-    if (sequential_model_init(&model, 2) != 0 ||
+    if (sequential_model_init(&model, 4) != 0 ||
         sequential_model_add_dense(&model, 2, 4, ACT_SIGMOID) != 0 ||
-        sequential_model_add_dense(&model, 4, 1, ACT_RELU) != 0 ||
+        sequential_model_add_dense(&model, 4, 4, ACT_SIGMOID) != 0 ||
+        sequential_model_add_dense(&model, 4, 1, ACT_SIGMOID) != 0 ||
         sequential_model_randomize(&model, 0.4f) != 0) {
         return 1;
     }
 
-    if (sequential_model_compile(&model, LOSS_MSE, OPTIMIZER_RMSPROP, 0.005f, 0.9f, 0.999f) != 0) return 1;
-    if (sequential_model_train(&model, &x[0][0], &y[0][0], 4, 2, 1, epochs, batch_size, &loss) != 0) return 1;
+    if (sequential_model_compile(&model, LOSS_BCE, OPTIMIZER_RMSPROP, 0.005f, 0.9f, 0.999f) != 0) return 1;
+        if (sequential_model_train_with_progress(&model, &x[0][0], &y[0][0], 4, 2, 1, epochs, batch_size, 10, &loss) != 0) return 1;
     printf("final loss = %.6f\n", loss);
     puts("predictions:");
     for (int i = 0; i < 4; i++) {

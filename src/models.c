@@ -67,32 +67,6 @@ static int max_plugin_layer_width(const SequentialModel *model) {
     return max_width;
 }
 
-static int max_plugin_weights_size(const SequentialModel *model) {
-    int max_size = 0;
-
-    for (int i = 0; i < model->num_layers; i++) {
-        int size = model->layers[i].weights_size(model->layers[i].ctx);
-        if (size > max_size) {
-            max_size = size;
-        }
-    }
-
-    return max_size;
-}
-
-static int max_plugin_biases_size(const SequentialModel *model) {
-    int max_size = 0;
-
-    for (int i = 0; i < model->num_layers; i++) {
-        int size = model->layers[i].biases_size(model->layers[i].ctx);
-        if (size > max_size) {
-            max_size = size;
-        }
-    }
-
-    return max_size;
-}
-
 static void model_workspace_free(SequentialModel *model) {
     if (!model) return;
 
@@ -415,10 +389,12 @@ int sequential_model_forward(SequentialModel *model,
         return model->layers[0].forward(model->layers[0].ctx, input, output);
     }
 
-    int width = max_plugin_layer_width(model);
-    if (ensure_workspace(&model->work_forward_a, &model->work_forward_size, width) != 0 ||
-        ensure_workspace(&model->work_forward_b, &model->work_forward_size, width) != 0) {
-        return -1;
+    if (!model->work_forward_a || !model->work_forward_b) {
+        int width = max_plugin_layer_width(model);
+        if (ensure_workspace(&model->work_forward_a, &model->work_forward_size, width) != 0 ||
+            ensure_workspace(&model->work_forward_b, &model->work_forward_size, width) != 0) {
+            return -1;
+        }
     }
 
     const float *current_input = input;
@@ -633,23 +609,66 @@ int sequential_model_compile(SequentialModel *model,
         model->compiled_owns_adam_state = 1;
     }
 
+    /* Pre-allocate all runtime workspaces now that topology is fixed, so that
+     * sequential_model_forward and sequential_model_optimize_from_prediction
+     * can skip per-call layer scans entirely. */
+    {
+        int width = 0, max_grad_w_size = 0, max_grad_b_size = 0;
+        for (int i = 0; i < model->num_layers; i++) {
+            int in  = model->layers[i].input_size(model->layers[i].ctx);
+            int out = model->layers[i].output_size(model->layers[i].ctx);
+            int ws  = model->layers[i].weights_size(model->layers[i].ctx);
+            int bs  = model->layers[i].biases_size(model->layers[i].ctx);
+            if (in  > width)            width            = in;
+            if (out > width)            width            = out;
+            if (ws  > max_grad_w_size)  max_grad_w_size  = ws;
+            if (bs  > max_grad_b_size)  max_grad_b_size  = bs;
+        }
+        if (width > 0 && max_grad_w_size > 0 && max_grad_b_size > 0) {
+            if (ensure_workspace(&model->work_forward_a, &model->work_forward_size,  width) != 0 ||
+                ensure_workspace(&model->work_forward_b, &model->work_forward_size,  width) != 0 ||
+                ensure_workspace(&model->work_delta_a,   &model->work_delta_size,    width) != 0 ||
+                ensure_workspace(&model->work_delta_b,   &model->work_delta_size,    width) != 0 ||
+                ensure_workspace(&model->work_grad_w,    &model->work_grad_w_size,   max_grad_w_size) != 0 ||
+                ensure_workspace(&model->work_grad_b,    &model->work_grad_b_size,   max_grad_b_size) != 0) {
+                if (model->compiled_owns_adam_state) {
+                    sequential_model_adam_state_free(model, &model->compiled_adam_state);
+                    model->compiled_owns_adam_state = 0;
+                }
+                return -1;
+            }
+        }
+    }
+
     model->compiled = 1;
     return 0;
 }
 
-int sequential_model_train(SequentialModel *model,
-                           const float *inputs,
-                           const float *targets,
-                           int num_samples,
-                           int input_size,
-                           int target_size,
-                           int epochs,
-                           int batch_size,
-                           float *final_loss_out) {
+int sequential_model_train_with_progress(SequentialModel *model,
+                                         const float *inputs,
+                                         const float *targets,
+                                         int num_samples,
+                                         int input_size,
+                                         int target_size,
+                                         int epochs,
+                                         int batch_size,
+                                         int progress_percent,
+                                         float *final_loss_out) {
+    int status = -1;
+    float epoch_loss = 0.0f;
+    float *output = NULL;
+    float **acc_w = NULL;
+    float **acc_b = NULL;
+    float **layer_weights = NULL;
+    float **layer_biases = NULL;
+    int *grad_w_sizes = NULL;
+    int *grad_b_sizes = NULL;
+
     if (!model || !inputs || !targets || num_samples <= 0 || input_size <= 0 || target_size <= 0 || epochs <= 0) {
         return -1;
     }
     if (batch_size <= 0) return -1;
+    if (progress_percent > 100) progress_percent = 100;
     if (!model->compiled) return -1;
     if (model->num_layers <= 0) return -1;
 
@@ -671,49 +690,167 @@ int sequential_model_train(SequentialModel *model,
         return -1;
     }
 
-    float *output = malloc((size_t)expected_target_size * sizeof(float));
-    if (!output) return -1;
+    output = malloc((size_t)expected_target_size * sizeof(float));
+    if (!output) goto cleanup;
 
-    float **acc_w = calloc((size_t)model->num_layers, sizeof(float *));
-    float **acc_b = calloc((size_t)model->num_layers, sizeof(float *));
-    if (!acc_w || !acc_b) {
-        free(output);
-        free_grad_accumulators(acc_w, acc_b, model->num_layers);
-        return -1;
+    layer_weights = calloc((size_t)model->num_layers, sizeof(float *));
+    layer_biases = calloc((size_t)model->num_layers, sizeof(float *));
+    grad_w_sizes = calloc((size_t)model->num_layers, sizeof(int));
+    grad_b_sizes = calloc((size_t)model->num_layers, sizeof(int));
+    if (!layer_weights || !layer_biases || !grad_w_sizes || !grad_b_sizes) {
+        goto cleanup;
     }
 
+    int max_grad_w_size = 0;
+    int max_grad_b_size = 0;
     for (int i = 0; i < model->num_layers; i++) {
-        int w_size = model->layers[i].weights_size(model->layers[i].ctx);
-        int b_size = model->layers[i].biases_size(model->layers[i].ctx);
-        if (w_size <= 0 || b_size <= 0) {
-            free(output);
-            free_grad_accumulators(acc_w, acc_b, model->num_layers);
-            return -1;
+        layer_weights[i] = model->layers[i].weights(model->layers[i].ctx);
+        layer_biases[i] = model->layers[i].biases(model->layers[i].ctx);
+        grad_w_sizes[i] = model->layers[i].weights_size(model->layers[i].ctx);
+        grad_b_sizes[i] = model->layers[i].biases_size(model->layers[i].ctx);
+
+        if (!layer_weights[i] || !layer_biases[i] || grad_w_sizes[i] <= 0 || grad_b_sizes[i] <= 0) {
+            goto cleanup;
         }
 
-        acc_w[i] = calloc((size_t)w_size, sizeof(float));
-        acc_b[i] = calloc((size_t)b_size, sizeof(float));
-        if (!acc_w[i] || !acc_b[i]) {
-            free(output);
-            free_grad_accumulators(acc_w, acc_b, model->num_layers);
-            return -1;
+        if (grad_w_sizes[i] > max_grad_w_size) {
+            max_grad_w_size = grad_w_sizes[i];
+        }
+        if (grad_b_sizes[i] > max_grad_b_size) {
+            max_grad_b_size = grad_b_sizes[i];
         }
     }
 
     int width = max_plugin_layer_width(model);
-    int max_grad_w_size = max_plugin_weights_size(model);
-    int max_grad_b_size = max_plugin_biases_size(model);
     if (width <= 0 || max_grad_w_size <= 0 || max_grad_b_size <= 0 ||
         ensure_workspace(&model->work_delta_a, &model->work_delta_size, width) != 0 ||
         ensure_workspace(&model->work_delta_b, &model->work_delta_size, width) != 0 ||
         ensure_workspace(&model->work_grad_w, &model->work_grad_w_size, max_grad_w_size) != 0 ||
         ensure_workspace(&model->work_grad_b, &model->work_grad_b_size, max_grad_b_size) != 0) {
-        free(output);
-        free_grad_accumulators(acc_w, acc_b, model->num_layers);
-        return -1;
+        goto cleanup;
     }
 
-    float epoch_loss = 0.0f;
+    int next_progress = progress_percent;
+
+    if (batch_size == 1) {
+        for (int epoch = 0; epoch < epochs; epoch++) {
+            epoch_loss = 0.0f;
+            for (int sample_idx = 0; sample_idx < num_samples; sample_idx++) {
+                const float *sample_input = inputs + ((size_t)sample_idx * (size_t)input_size);
+                const float *sample_target = targets + ((size_t)sample_idx * (size_t)target_size);
+                float sample_loss = 0.0f;
+                float *delta_curr = model->work_delta_a;
+                float *delta_prev = model->work_delta_b;
+
+                if (sequential_model_forward(model, sample_input, output) != 0 ||
+                    compute_loss_and_grad(model->compiled_loss,
+                                          output,
+                                          sample_target,
+                                          target_size,
+                                          &sample_loss,
+                                          delta_curr) != 0) {
+                    goto cleanup;
+                }
+
+                epoch_loss += sample_loss;
+
+                for (int l = model->num_layers - 1; l >= 0; l--) {
+                    float *next_delta = (l > 0) ? delta_prev : NULL;
+                    float *opt_state_w_a = NULL;
+                    float *opt_state_w_b = NULL;
+                    float *opt_state_b_a = NULL;
+                    float *opt_state_b_b = NULL;
+
+                    if (model->layers[l].backward(model->layers[l].ctx,
+                                                  delta_curr,
+                                                  next_delta,
+                                                  model->work_grad_w,
+                                                  model->work_grad_b) != 0) {
+                        goto cleanup;
+                    }
+
+                    if (model->compiled_optimizer == OPTIMIZER_ADAM) {
+                        opt_state_w_a = optimizer_state->m_w[l];
+                        opt_state_w_b = optimizer_state->v_w[l];
+                        opt_state_b_a = optimizer_state->m_b[l];
+                        opt_state_b_b = optimizer_state->v_b[l];
+                    } else if (model->compiled_optimizer == OPTIMIZER_RMSPROP) {
+                        opt_state_w_a = optimizer_state->m_w[l];
+                        opt_state_b_a = optimizer_state->m_b[l];
+                    }
+
+                    if (apply_optimizer_update(layer_weights[l],
+                                               model->work_grad_w,
+                                               grad_w_sizes[l],
+                                               model->compiled_optimizer,
+                                               model->compiled_learning_rate,
+                                               optimizer_state,
+                                               opt_state_w_a,
+                                               opt_state_w_b) != 0 ||
+                        apply_optimizer_update(layer_biases[l],
+                                               model->work_grad_b,
+                                               grad_b_sizes[l],
+                                               model->compiled_optimizer,
+                                               model->compiled_learning_rate,
+                                               optimizer_state,
+                                               opt_state_b_a,
+                                               opt_state_b_b) != 0) {
+                        goto cleanup;
+                    }
+
+                    if (l > 0) {
+                        float *tmp = delta_curr;
+                        delta_curr = delta_prev;
+                        delta_prev = tmp;
+                    }
+                }
+
+                if (model->compiled_optimizer == OPTIMIZER_ADAM) {
+                    optimizer_state->step += 1;
+                }
+            }
+
+            if (progress_percent > 0) {
+                float avg_loss = epoch_loss / (float)num_samples;
+                int current_percent = ((epoch + 1) * 100) / epochs;
+                int is_final_epoch = (epoch + 1) == epochs;
+
+                if (current_percent >= next_progress || is_final_epoch) {
+                    printf("[train] %d%% epoch=%d/%d loss=%.6f\n",
+                           current_percent,
+                           epoch + 1,
+                           epochs,
+                           avg_loss);
+
+                    while (next_progress <= current_percent && next_progress > 0) {
+                        next_progress += progress_percent;
+                    }
+                }
+            }
+        }
+
+        if (final_loss_out) {
+            *final_loss_out = epoch_loss / (float)num_samples;
+        }
+
+        status = 0;
+        goto cleanup;
+    }
+
+    acc_w = calloc((size_t)model->num_layers, sizeof(float *));
+    acc_b = calloc((size_t)model->num_layers, sizeof(float *));
+    if (!acc_w || !acc_b) {
+        goto cleanup;
+    }
+
+    for (int i = 0; i < model->num_layers; i++) {
+        acc_w[i] = calloc((size_t)grad_w_sizes[i], sizeof(float));
+        acc_b[i] = calloc((size_t)grad_b_sizes[i], sizeof(float));
+        if (!acc_w[i] || !acc_b[i]) {
+            goto cleanup;
+        }
+    }
+
     for (int epoch = 0; epoch < epochs; epoch++) {
         epoch_loss = 0.0f;
         for (int batch_start = 0; batch_start < num_samples; batch_start += batch_size) {
@@ -722,10 +859,8 @@ int sequential_model_train(SequentialModel *model,
             int current_batch = batch_end - batch_start;
 
             for (int l = 0; l < model->num_layers; l++) {
-                int w_size = model->layers[l].weights_size(model->layers[l].ctx);
-                int b_size = model->layers[l].biases_size(model->layers[l].ctx);
-                memset(acc_w[l], 0, (size_t)w_size * sizeof(float));
-                memset(acc_b[l], 0, (size_t)b_size * sizeof(float));
+                memset(acc_w[l], 0, (size_t)grad_w_sizes[l] * sizeof(float));
+                memset(acc_b[l], 0, (size_t)grad_b_sizes[l] * sizeof(float));
             }
 
             for (int sample_idx = batch_start; sample_idx < batch_end; sample_idx++) {
@@ -742,34 +877,28 @@ int sequential_model_train(SequentialModel *model,
                                           target_size,
                                           &sample_loss,
                                           delta_curr) != 0) {
-                    free(output);
-                    free_grad_accumulators(acc_w, acc_b, model->num_layers);
-                    return -1;
+                    goto cleanup;
                 }
 
                 epoch_loss += sample_loss;
 
                 for (int l = model->num_layers - 1; l >= 0; l--) {
                     float *next_delta = (l > 0) ? delta_prev : NULL;
-                    int grad_w_size = model->layers[l].weights_size(model->layers[l].ctx);
-                    int grad_b_size = model->layers[l].biases_size(model->layers[l].ctx);
 
-                    if (grad_w_size > model->work_grad_w_size ||
-                        grad_b_size > model->work_grad_b_size ||
+                    if (grad_w_sizes[l] > model->work_grad_w_size ||
+                        grad_b_sizes[l] > model->work_grad_b_size ||
                         model->layers[l].backward(model->layers[l].ctx,
                                                   delta_curr,
                                                   next_delta,
                                                   model->work_grad_w,
                                                   model->work_grad_b) != 0) {
-                        free(output);
-                        free_grad_accumulators(acc_w, acc_b, model->num_layers);
-                        return -1;
+                        goto cleanup;
                     }
 
-                    for (int k = 0; k < grad_w_size; k++) {
+                    for (int k = 0; k < grad_w_sizes[l]; k++) {
                         acc_w[l][k] += model->work_grad_w[k];
                     }
-                    for (int k = 0; k < grad_b_size; k++) {
+                    for (int k = 0; k < grad_b_sizes[l]; k++) {
                         acc_b[l][k] += model->work_grad_b[k];
                     }
 
@@ -783,17 +912,15 @@ int sequential_model_train(SequentialModel *model,
 
             float inv_batch = 1.0f / (float)current_batch;
             for (int l = 0; l < model->num_layers; l++) {
-                int grad_w_size = model->layers[l].weights_size(model->layers[l].ctx);
-                int grad_b_size = model->layers[l].biases_size(model->layers[l].ctx);
                 float *opt_state_w_a = NULL;
                 float *opt_state_w_b = NULL;
                 float *opt_state_b_a = NULL;
                 float *opt_state_b_b = NULL;
 
-                for (int k = 0; k < grad_w_size; k++) {
+                for (int k = 0; k < grad_w_sizes[l]; k++) {
                     acc_w[l][k] *= inv_batch;
                 }
-                for (int k = 0; k < grad_b_size; k++) {
+                for (int k = 0; k < grad_b_sizes[l]; k++) {
                     acc_b[l][k] *= inv_batch;
                 }
 
@@ -807,30 +934,46 @@ int sequential_model_train(SequentialModel *model,
                     opt_state_b_a = optimizer_state->m_b[l];
                 }
 
-                if (apply_optimizer_update(model->layers[l].weights(model->layers[l].ctx),
+                if (apply_optimizer_update(layer_weights[l],
                                            acc_w[l],
-                                           grad_w_size,
+                                           grad_w_sizes[l],
                                            model->compiled_optimizer,
                                            model->compiled_learning_rate,
                                            optimizer_state,
                                            opt_state_w_a,
                                            opt_state_w_b) != 0 ||
-                    apply_optimizer_update(model->layers[l].biases(model->layers[l].ctx),
+                    apply_optimizer_update(layer_biases[l],
                                            acc_b[l],
-                                           grad_b_size,
+                                           grad_b_sizes[l],
                                            model->compiled_optimizer,
                                            model->compiled_learning_rate,
                                            optimizer_state,
                                            opt_state_b_a,
                                            opt_state_b_b) != 0) {
-                    free(output);
-                    free_grad_accumulators(acc_w, acc_b, model->num_layers);
-                    return -1;
+                    goto cleanup;
                 }
             }
 
             if (model->compiled_optimizer == OPTIMIZER_ADAM) {
                 optimizer_state->step += 1;
+            }
+        }
+
+        if (progress_percent > 0) {
+            float avg_loss = epoch_loss / (float)num_samples;
+            int current_percent = ((epoch + 1) * 100) / epochs;
+            int is_final_epoch = (epoch + 1) == epochs;
+
+            if (current_percent >= next_progress || is_final_epoch) {
+                printf("[train] %d%% epoch=%d/%d loss=%.6f\n",
+                       current_percent,
+                       epoch + 1,
+                       epochs,
+                       avg_loss);
+
+                while (next_progress <= current_percent && next_progress > 0) {
+                    next_progress += progress_percent;
+                }
             }
         }
     }
@@ -839,9 +982,37 @@ int sequential_model_train(SequentialModel *model,
         *final_loss_out = epoch_loss / (float)num_samples;
     }
 
-    free(output);
+    status = 0;
+
+cleanup:
     free_grad_accumulators(acc_w, acc_b, model->num_layers);
-    return 0;
+    free(grad_b_sizes);
+    free(grad_w_sizes);
+    free(layer_biases);
+    free(layer_weights);
+    free(output);
+    return status;
+}
+
+int sequential_model_train(SequentialModel *model,
+                           const float *inputs,
+                           const float *targets,
+                           int num_samples,
+                           int input_size,
+                           int target_size,
+                           int epochs,
+                           int batch_size,
+                           float *final_loss_out) {
+    return sequential_model_train_with_progress(model,
+                                                inputs,
+                                                targets,
+                                                num_samples,
+                                                input_size,
+                                                target_size,
+                                                epochs,
+                                                batch_size,
+                                                0,
+                                                final_loss_out);
 }
 
 void sequential_train_config_init_sgd(SequentialTrainConfig *cfg,
@@ -1006,19 +1177,26 @@ int sequential_model_optimize_from_prediction(SequentialModel *model,
         return -1;
     }
 
-    int width = max_plugin_layer_width(model);
-    int max_grad_w_size = max_plugin_weights_size(model);
-    int max_grad_b_size = max_plugin_biases_size(model);
-
-    if (max_grad_w_size <= 0 || max_grad_b_size <= 0) {
-        return -1;
-    }
-
-    if (ensure_workspace(&model->work_delta_a, &model->work_delta_size, width) != 0 ||
-        ensure_workspace(&model->work_delta_b, &model->work_delta_size, width) != 0 ||
-        ensure_workspace(&model->work_grad_w, &model->work_grad_w_size, max_grad_w_size) != 0 ||
-        ensure_workspace(&model->work_grad_b, &model->work_grad_b_size, max_grad_b_size) != 0) {
-        return -1;
+    if (!model->work_delta_a || !model->work_delta_b ||
+        !model->work_grad_w  || !model->work_grad_b) {
+        int width = 0, max_grad_w_size = 0, max_grad_b_size = 0;
+        for (int i = 0; i < model->num_layers; i++) {
+            int in  = model->layers[i].input_size(model->layers[i].ctx);
+            int out = model->layers[i].output_size(model->layers[i].ctx);
+            int ws  = model->layers[i].weights_size(model->layers[i].ctx);
+            int bs  = model->layers[i].biases_size(model->layers[i].ctx);
+            if (in  > width)            width            = in;
+            if (out > width)            width            = out;
+            if (ws  > max_grad_w_size)  max_grad_w_size  = ws;
+            if (bs  > max_grad_b_size)  max_grad_b_size  = bs;
+        }
+        if (max_grad_w_size <= 0 || max_grad_b_size <= 0) return -1;
+        if (ensure_workspace(&model->work_delta_a, &model->work_delta_size, width) != 0 ||
+            ensure_workspace(&model->work_delta_b, &model->work_delta_size, width) != 0 ||
+            ensure_workspace(&model->work_grad_w,  &model->work_grad_w_size, max_grad_w_size) != 0 ||
+            ensure_workspace(&model->work_grad_b,  &model->work_grad_b_size, max_grad_b_size) != 0) {
+            return -1;
+        }
     }
 
     float *delta_curr = model->work_delta_a;
@@ -1035,10 +1213,6 @@ int sequential_model_optimize_from_prediction(SequentialModel *model,
 
         int grad_w_size = model->layers[i].weights_size(model->layers[i].ctx);
         int grad_b_size = model->layers[i].biases_size(model->layers[i].ctx);
-
-        if (grad_w_size > max_grad_w_size || grad_b_size > max_grad_b_size) {
-            return -1;
-        }
 
         if (model->layers[i].backward(model->layers[i].ctx, delta_curr, next_delta, grad_w, grad_b) != 0) {
             return -1;

@@ -235,6 +235,9 @@ int conv2d_layer_backward(const Conv2DLayer *layer,
 
     memset(grad_w, 0, (size_t)weights_size * sizeof(float));
     memset(grad_b, 0, (size_t)layer->output_channels * sizeof(float));
+    if (delta_out) {
+        memset(delta_out, 0, (size_t)input_size * sizeof(float));
+    }
 
     for (int oc = 0; oc < layer->output_channels; oc++) {
         for (int oy = 0; oy < layer->output_height; oy++) {
@@ -258,36 +261,7 @@ int conv2d_layer_backward(const Conv2DLayer *layer,
                             int input_idx = conv2d_input_index(layer, ic, in_y, in_x);
                             int weight_idx = conv2d_weight_index(layer, oc, ic, ky, kx);
                             grad_w[weight_idx] += d * layer->cache_input[input_idx];
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (delta_out) {
-        memset(delta_out, 0, (size_t)input_size * sizeof(float));
-
-        for (int oc = 0; oc < layer->output_channels; oc++) {
-            for (int oy = 0; oy < layer->output_height; oy++) {
-                for (int ox = 0; ox < layer->output_width; ox++) {
-                    int output_idx = conv2d_output_index(layer, oc, oy, ox);
-                    float d = delta_in[output_idx] * act_deriv(layer->cache_z[output_idx], layer->activation);
-
-                    int in_y_origin = oy * layer->stride - layer->padding;
-                    int in_x_origin = ox * layer->stride - layer->padding;
-
-                    for (int ic = 0; ic < layer->input_channels; ic++) {
-                        for (int ky = 0; ky < layer->kernel_height; ky++) {
-                            int in_y = in_y_origin + ky;
-                            if (in_y < 0 || in_y >= layer->input_height) continue;
-
-                            for (int kx = 0; kx < layer->kernel_width; kx++) {
-                                int in_x = in_x_origin + kx;
-                                if (in_x < 0 || in_x >= layer->input_width) continue;
-
-                                int input_idx = conv2d_input_index(layer, ic, in_y, in_x);
-                                int weight_idx = conv2d_weight_index(layer, oc, ic, ky, kx);
+                            if (delta_out) {
                                 delta_out[input_idx] += layer->weights[weight_idx] * d;
                             }
                         }

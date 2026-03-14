@@ -173,6 +173,24 @@ int sequential_model_train(SequentialModel *model,
 					   float *final_loss_out);
 
 /*
+ * Same as sequential_model_train, with optional progress output.
+ * `progress_percent` controls print interval by training completion percent:
+ * - <= 0: disabled
+ * - 1..100: print approximately every N%% and always on final epoch
+ * - > 100: treated as 100
+ */
+int sequential_model_train_with_progress(SequentialModel *model,
+							 const float *inputs,
+							 const float *targets,
+							 int num_samples,
+							 int input_size,
+							 int target_size,
+							 int epochs,
+							 int batch_size,
+							 int progress_percent,
+							 float *final_loss_out);
+
+/*
  * Initializes a train config for SGD and selected loss.
  */
 void sequential_train_config_init_sgd(SequentialTrainConfig *cfg,
