@@ -29,3 +29,15 @@ int sgd_optimizer(float *weights, float *grads, float learning_rate, int size) {
 
     return 0;
 }
+
+int rmsprop_optimizer(float *weights, float *grads, float *cache,
+                       float beta, float learning_rate, int size) {
+    if (!weights || !grads || !cache || size <= 0) return -1;
+
+    for (int i = 0; i < size; i++) {
+        cache[i] = beta * cache[i] + (1.0f - beta) * grads[i] * grads[i];
+        weights[i] -= learning_rate * grads[i] / (sqrtf(cache[i]) + 1e-8f);
+    }
+
+    return 0;
+}

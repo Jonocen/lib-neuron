@@ -86,7 +86,7 @@ int sequential_model_predict(SequentialModel *model,
 
 /*
  * Compiles model training settings (loss, optimizer, learning rate).
- * For Adam, state is allocated internally.
+ * For Adam and RMSProp, optimizer state/cache is allocated internally.
  * Returns 0 on success, -1 on invalid input or allocation failure.
  */
 int sequential_model_compile(SequentialModel *model,
@@ -185,6 +185,8 @@ int sequential_model_train_step_sgd(SequentialModel *model,
  * Optimizer is selected at runtime with `optimizer`.
  * - For OPTIMIZER_SGD: `adam_state` is ignored and may be NULL.
  * - For OPTIMIZER_ADAM: `adam_state` must be fully initialized.
+ * - For OPTIMIZER_RMSPROP: `adam_state->m_w/m_b` are used as caches and
+ *   `adam_state->beta1` is used as RMSProp beta.
  * - `loss_out` is optional and may be NULL.
  * Returns 0 on success, -1 on invalid input or failure.
  */
@@ -201,6 +203,8 @@ int sequential_model_train_step(SequentialModel *model,
  * One training step with selectable loss and optimizer.
  * - `loss_function`: LOSS_MSE or LOSS_BCE.
  * - For OPTIMIZER_ADAM: `adam_state` must be fully initialized.
+ * - For OPTIMIZER_RMSPROP: `adam_state->m_w/m_b` are used as caches and
+ *   `adam_state->beta1` is used as RMSProp beta.
  * Returns 0 on success, -1 on invalid input or failure.
  */
 int sequential_model_train_step_with_loss(SequentialModel *model,
@@ -307,6 +311,8 @@ int sequential_train_step_sgd(Layer *layers, int num_layers,
  * - `grads_b[i]` must point to output_size for layer i.
  * - For OPTIMIZER_SGD: `adam_state` is ignored and may be NULL.
  * - For OPTIMIZER_ADAM: `adam_state` must be fully initialized.
+ * - For OPTIMIZER_RMSPROP: `adam_state->m_w/m_b` are used as caches and
+ *   `adam_state->beta1` is used as RMSProp beta.
  * - `loss_out` is optional and may be NULL.
  * Returns 0 on success, -1 on invalid input or failure.
  */
