@@ -10,6 +10,9 @@ These docs cover dense, conv2d, and maxpool2d workflows across both low-level an
 - [API Reference](APIReference.md)
 - [Examples](Examples.md)
 - [Training](Training.md)
+- [Add an Optimizer](AddOptimizer.md)
+- [Add a Loss Function](AddLossFunction.md)
+- [Add a Layer + Plugin Layer](AddLayerAndPluginLayer.md)
 - [Use the Library + First Script](FirstScript.md)
 
 ## Notes

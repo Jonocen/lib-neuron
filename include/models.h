@@ -14,7 +14,10 @@ typedef struct {
 	int     step;
 	float   beta1;
 	float   beta2;
-} AdamOptimizerState;
+} OptimizerState;
+
+/* Backward-compatible alias. */
+typedef OptimizerState AdamOptimizerState;
 
 typedef struct {
 	LayerPlugin *layers;
@@ -24,8 +27,8 @@ typedef struct {
 	LossFunctionType compiled_loss;
 	OptimizerType    compiled_optimizer;
 	float            compiled_learning_rate;
-	int              compiled_owns_adam_state;
-	AdamOptimizerState compiled_adam_state;
+	int              compiled_owns_optimizer_state;
+	OptimizerState   compiled_optimizer_state;
 	/* Internal reusable workspaces for faster forward/backward passes. */
 	float           *work_forward_a;
 	float           *work_forward_b;
@@ -43,6 +46,8 @@ typedef struct {
 	LossFunctionType   loss_function;
 	OptimizerType      optimizer;
 	float              learning_rate;
+	OptimizerState     *optimizer_state;
+	/* Backward-compatible alias. */
 	AdamOptimizerState *adam_state;
 } SequentialTrainConfig;
 
@@ -147,8 +152,20 @@ int sequential_model_compile(SequentialModel *model,
 						 LossFunctionType loss_function,
 						 OptimizerType optimizer,
 						 float learning_rate,
-						 float adam_beta1,
-						 float adam_beta2);
+						 float optimizer_beta1,
+						 float optimizer_beta2);
+
+/*
+ * Generic compile helper.
+ * For ADAM: (optimizer_beta1, optimizer_beta2) => (beta1, beta2)
+ * For RMSPROP: optimizer_beta1 => beta, optimizer_beta2 ignored
+ */
+int sequential_model_compile_optimizer(SequentialModel *model,
+								  LossFunctionType loss_function,
+								  OptimizerType optimizer,
+								  float learning_rate,
+								  float optimizer_beta1,
+								  float optimizer_beta2);
 
 /*
  * Trains model using previously compiled settings.
@@ -197,6 +214,17 @@ void sequential_train_config_init_sgd(SequentialTrainConfig *cfg,
 							  LossFunctionType loss_function,
 							  float learning_rate);
 
+void sequential_train_config_init_optimizer(SequentialTrainConfig *cfg,
+									LossFunctionType loss_function,
+									OptimizerType optimizer,
+									float learning_rate,
+									OptimizerState *optimizer_state);
+
+void sequential_train_config_init_rmsprop(SequentialTrainConfig *cfg,
+							  LossFunctionType loss_function,
+							  float learning_rate,
+							  OptimizerState *optimizer_state);
+
 /*
  * Initializes a train config for Adam and selected loss.
  */
@@ -206,21 +234,31 @@ void sequential_train_config_init_adam(SequentialTrainConfig *cfg,
 							   AdamOptimizerState *adam_state);
 
 /*
- * Allocates and initializes Adam state buffers for all layers in `model`.
+ * Allocates and initializes optimizer state buffers for all layers in `model`.
  * `out_state` must be an empty struct (all fields zero/NULL).
  * Returns 0 on success, -1 on invalid input or allocation failure.
  */
+int sequential_model_optimizer_state_init(SequentialModel *model,
+								  OptimizerState *out_state,
+								  OptimizerType optimizer,
+								  float beta1,
+								  float beta2);
+
+/* Backward-compatible Adam wrapper. */
 int sequential_model_adam_state_init(SequentialModel *model,
 							 AdamOptimizerState *out_state,
 							 float beta1,
 							 float beta2);
 
 /*
- * Frees Adam state buffers previously initialized with
- * `sequential_model_adam_state_init`.
+ * Frees optimizer state buffers previously initialized by this library.
  */
+void sequential_model_optimizer_state_free(SequentialModel *model,
+							  OptimizerState *state);
+
+/* Backward-compatible Adam wrapper. */
 void sequential_model_adam_state_free(SequentialModel *model,
-							  AdamOptimizerState *state);
+						  AdamOptimizerState *state);
 
 /*
  * One-call train step driven by a compact config struct.
@@ -250,10 +288,8 @@ int sequential_model_train_step(SequentialModel *model,
 							LossFunctionType loss_function,
 							OptimizerType optimizer,
 							float learning_rate,
-							AdamOptimizerState *adam_state,
+							OptimizerState *optimizer_state,
 							float *loss_out);
-
-#endif /* MODELS_H */
 
 /*
  * Backward + update step for a model after an explicit forward pass.
@@ -268,7 +304,7 @@ int sequential_model_optimize_from_prediction(SequentialModel *model,
 									 LossFunctionType loss_function,
 									 OptimizerType optimizer,
 									 float learning_rate,
-									 AdamOptimizerState *adam_state,
+									 OptimizerState *optimizer_state,
 									 float *loss_out);
 
 /*
@@ -297,7 +333,7 @@ int sequential_train_step(Layer *layers, int num_layers,
 					  LossFunctionType loss_function,
 					  OptimizerType optimizer,
 					  float learning_rate,
-					  AdamOptimizerState *adam_state,
+					  OptimizerState *optimizer_state,
 					  float *loss_out);
 /*
  * Backward + update step after an explicit forward pass with sequential_forward.
@@ -312,5 +348,7 @@ int sequential_optimize_from_prediction(Layer *layers, int num_layers,
 						 LossFunctionType loss_function,
 						 OptimizerType optimizer,
 						 float learning_rate,
-						 AdamOptimizerState *adam_state,
+						 OptimizerState *optimizer_state,
 						 float *loss_out);
+
+#endif /* MODELS_H */

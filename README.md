@@ -31,6 +31,9 @@ Include everything with:
 - `docs/Quickstart.md`
 - `docs/Examples.md`
 - `docs/Training.md`
+- `docs/AddOptimizer.md`
+- `docs/AddLossFunction.md`
+- `docs/AddLayerAndPluginLayer.md`
 - `docs/FirstScript.md`
 - `docs/APIReference.md`
 
