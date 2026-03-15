@@ -25,6 +25,14 @@ Include everything with:
 - `include/` — public headers
 - `src/` — implementations
 
+Model APIs are split into focused headers while keeping compatibility:
+
+- `include/models.h` (umbrella)
+- `include/models_types.h`
+- `include/models_core.h`
+- `include/models_training.h`
+- `include/models_legacy.h`
+
 ## Docs
 
 - `docs/README.md`
@@ -106,15 +114,15 @@ sequential_model_init(&model, 2);
 sequential_model_add_dense(&model, 2, 4, ACT_RELU);
 sequential_model_add_dense(&model, 4, 1, ACT_SIGMOID);
 
-sequential_model_train_step_with_loss(&model,
-									  input,
-									  target,
-									  out,
-									  loss_function,
-									  optimizer,
-									  learning_rate,
-									  NULL,
-									  &loss);
+sequential_model_train_step(&model,
+					  input,
+					  target,
+					  out,
+					  loss_function,
+					  optimizer,
+					  learning_rate,
+					  NULL,
+					  &loss);
 sequential_model_forward(&model, input, out);
 
 sequential_model_free(&model);

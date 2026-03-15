@@ -15,9 +15,12 @@ You will edit these files:
 
 1. `include/optimizers.h`
 2. `src/optimizers.c`
-3. `src/models.c`
-4. `docs/Training.md`
-5. `docs/APIReference.md`
+3. `src/models_internal.c`
+4. `src/models_train.c`
+5. `src/models_state.c`
+6. `src/models_legacy.c`
+7. `docs/Training.md`
+8. `docs/APIReference.md`
 
 Run this after each big step:
 
@@ -32,7 +35,7 @@ An optimizer in this project is:
 1. A math function that updates weights from gradients.
 2. A new enum value (`OptimizerType`) so code can select it.
 3. A state mapping (if it needs memory across steps).
-4. Wiring in `models.c` so training loops call it.
+4. Wiring in models internals/train/state files so training loops call it.
 
 If one of these is missing, the optimizer will not work end-to-end.
 
@@ -47,7 +50,8 @@ typedef enum {
     OPTIMIZER_SGD = 0,
     OPTIMIZER_ADAM = 1,
     OPTIMIZER_RMSPROP = 2,
-    OPTIMIZER_ADAGRAD = 3
+    OPTIMIZER_ADAGRAD = 3,
+    OPTIMIZER_ADAMW = 4
 } OptimizerType;
 ```
 
@@ -90,7 +94,7 @@ Why:
 
 ## Step 3. Choose state mapping
 
-`lib-neuron` already has `OptimizerState` in `include/models.h`.
+`lib-neuron` already has `OptimizerState` in `include/models_types.h`.
 
 For Adagrad, use:
 
@@ -117,7 +121,7 @@ static int adagrad_optimizer_state_valid(const OptimizerState *optimizer_state) 
 
 This avoids adding a new struct and keeps code simpler.
 
-## Step 4. Validate state in `src/models.c`
+## Step 4. Validate state in `src/models_internal.c`
 
 Add a helper similar to existing ones:
 
@@ -140,9 +144,9 @@ if (optimizer == OPTIMIZER_ADAGRAD) {
 Why:
 - Training should fail early if required state is missing.
 
-## Step 5. Add dispatch in `apply_optimizer_update(...)`
+## Step 5. Add dispatch in `lnn_apply_optimizer_update(...)`
 
-In `src/models.c`, extend optimizer dispatch:
+In `src/models_internal.c`, extend optimizer dispatch:
 
 ```c
 if (optimizer == OPTIMIZER_ADAGRAD) {
@@ -160,7 +164,7 @@ Why:
 
 ## Step 6. Allow compile/config paths to accept new optimizer
 
-Still in `src/models.c`, update checks that list allowed optimizers.
+In `src/models_train.c` and `src/models_state.c`, update checks that list allowed optimizers.
 
 Typical places:
 
@@ -178,6 +182,12 @@ In these functions:
 1. `sequential_model_train_with_progress(...)`
 2. `sequential_model_optimize_from_prediction(...)`
 3. `sequential_optimize_from_prediction(...)`
+
+These live in:
+
+- `src/models_train.c`
+- `src/models_state.c`
+- `src/models_legacy.c`
 
 When optimizer is Adagrad, set:
 

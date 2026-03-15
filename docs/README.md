@@ -20,5 +20,6 @@ These docs cover dense, conv2d, and maxpool2d workflows across both low-level an
 - API returns `0` on success and `-1` on invalid input/failure.
 - Most arrays are updated in-place through pointers.
 - Tensor layout for conv/pool APIs is flattened CHW (channel-major).
+- Model API is split across `models_types.h`, `models_core.h`, `models_training.h`, and `models_legacy.h`; `models.h` includes all of them.
 - `examples/Other_Exaple.c` is a compact layer-array training demo (name kept as-is to match the current filename/target).
 - `APIReference.md` is a complete function-by-function reference for all public headers.

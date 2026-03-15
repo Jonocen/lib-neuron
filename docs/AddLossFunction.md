@@ -13,9 +13,12 @@ You will edit these files:
 
 1. `include/lossfunctions.h`
 2. `src/lossfunctions.c`
-3. `src/models.c`
-4. `docs/Training.md`
-5. `docs/APIReference.md`
+3. `src/models_internal.c`
+4. `src/models_train.c`
+5. `src/models_state.c`
+6. `src/models_legacy.c`
+7. `docs/Training.md`
+8. `docs/APIReference.md`
 
 Run this after each big step:
 
@@ -110,7 +113,7 @@ Checklist:
 
 ## Step 4. Wire into training flow
 
-Edit `src/models.c` in `compute_loss_and_grad(...)`.
+Edit `src/models_internal.c` in `lnn_compute_loss_and_grad(...)`.
 
 Add a `LOSS_HUBER` branch:
 
@@ -130,7 +133,7 @@ Notes:
 
 ## Step 5. Allow Huber in compile validation
 
-In `src/models.c`, find loss checks like this:
+In `src/models_train.c`, find loss checks like this:
 
 ```c
 if (loss_function != LOSS_MSE && loss_function != LOSS_BCE) return -1;

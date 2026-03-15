@@ -118,8 +118,8 @@ This matches current maxpool behavior.
 
 If you want ergonomic API like dense/conv/pool helpers, edit:
 
-- `include/models.h`
-- `src/models.c`
+- `include/models_core.h` (or `include/models.h` umbrella)
+- `src/models_core.c`
 
 Add a wrapper similar to `sequential_model_add_conv2d`:
 

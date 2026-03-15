@@ -9,7 +9,7 @@ This page explains the training flow in `lib-neuron`.
 - `optimizers`: `sgd_optimizer`, `adam_optimizer`, `rmsprop_optimizer`, `adagrad_optimizer`, `adamw_optimizer`
 - `models`: sequential helpers
 
-Loss selection in models (`loss_function` parameter accepts `LOSS_MSE` or `LOSS_BCE`):
+Loss selection in models (`loss_function` parameter accepts `LOSS_MSE`, `LOSS_BCE`, or `LOSS_HUBER`):
 
 - `sequential_model_train_step` / `sequential_train_step`
 - `sequential_model_optimize_from_prediction` / `sequential_optimize_from_prediction`
@@ -34,7 +34,7 @@ Conv/pool model building helpers:
 ## Built-in sequential training
 
 Use `sequential_train_step` (array-of-layers API) or `sequential_model_train_step` (plugin API).
-Both accept a `loss_function` parameter (`LOSS_MSE` or `LOSS_BCE`) and full optimizer control.
+Both accept a `loss_function` parameter (`LOSS_MSE`, `LOSS_BCE`, or `LOSS_HUBER`) and full optimizer control.
 
 One-call helper pattern:
 
@@ -81,7 +81,7 @@ sequential_model_train_with_progress(&model,
 									 4,
 									 2,
 									 1,
-									- `loss_function`: LOSS_MSE, LOSS_BCE, or LOSS_HUBER.
+									 5000,
 									 1,
 									 10,   // print every 10%
 									 &loss);
@@ -164,6 +164,7 @@ AdamOptimizerState adam = {
 
 sequential_train_step(layers, num_layers, input, target, output,
 					  grads_w, grads_b,
+					  LOSS_BCE,
 					  OPTIMIZER_ADAM,
 					  learning_rate,
 					  &adam,
@@ -226,6 +227,7 @@ sequential_model_train_step(&model,
 							input,
 							target,
 							output,
+							LOSS_BCE,
 							OPTIMIZER_RMSPROP,
 							0.005f,
 							&rms,

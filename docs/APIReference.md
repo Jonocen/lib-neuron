@@ -7,7 +7,11 @@ Scope:
 - `include/layers.h`
 - `include/lossfunctions.h`
 - `include/optimizers.h`
-- `include/models.h`
+- `include/models.h` (umbrella)
+- `include/models_types.h`
+- `include/models_core.h`
+- `include/models_training.h`
+- `include/models_legacy.h`
 
 ## Conventions
 
@@ -151,7 +155,7 @@ Scope:
 `int adamw_optimizer(float *weights, float *grads, float *m, float *v, float beta1, float beta2, float learning_rate, int t, int size)`
 - Applies one in-place AdamW update to `weights` using moment buffers and decoupled weight decay.
 
-## `models.h`
+## `models*.h`
 
 ### Model and training state structs
 
@@ -211,18 +215,30 @@ Scope:
 
 ### Compile + fit API
 
-`int sequential_model_compile(SequentialModel *model, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, float adam_beta1, float adam_beta2)`
+`int sequential_model_compile(SequentialModel *model, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, float optimizer_beta1, float optimizer_beta2)`
 - Stores training settings in the model.
-- Initializes internal optimizer state for Adam/RMSProp.
+- Initializes internal optimizer state for Adam/RMSProp/Adagrad/AdamW.
 
-`int sequential_model_train(SequentialModel *model, const float *inputs, const float *targets, int num_samples, int input_size, int target_size, int epochs, float *final_loss_out)`
+`int sequential_model_compile_optimizer(SequentialModel *model, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, float optimizer_beta1, float optimizer_beta2)`
+- Same behavior as `sequential_model_compile`; explicit generic entrypoint.
+
+`int sequential_model_train(SequentialModel *model, const float *inputs, const float *targets, int num_samples, int input_size, int target_size, int epochs, int batch_size, float *final_loss_out)`
 - Trains for `epochs` over contiguous sample arrays using compiled settings.
 - Writes final average loss to `final_loss_out` when provided.
+
+`int sequential_model_train_with_progress(SequentialModel *model, const float *inputs, const float *targets, int num_samples, int input_size, int target_size, int epochs, int batch_size, int progress_percent, float *final_loss_out)`
+- Same as `sequential_model_train` and prints periodic progress.
 
 ### Config helpers
 
 `void sequential_train_config_init_sgd(SequentialTrainConfig *cfg, LossFunctionType loss_function, float learning_rate)`
 - Fills config for SGD training steps.
+
+`void sequential_train_config_init_optimizer(SequentialTrainConfig *cfg, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, OptimizerState *optimizer_state)`
+- Generic config helper for any supported optimizer.
+
+`void sequential_train_config_init_rmsprop(SequentialTrainConfig *cfg, LossFunctionType loss_function, float learning_rate, OptimizerState *optimizer_state)`
+- Convenience config helper for RMSProp.
 
 `void sequential_train_config_init_adam(SequentialTrainConfig *cfg, LossFunctionType loss_function, float learning_rate, AdamOptimizerState *adam_state)`
 - Fills config for Adam training steps.
@@ -235,29 +251,34 @@ Scope:
 `void sequential_model_adam_state_free(SequentialModel *model, AdamOptimizerState *state)`
 - Frees buffers allocated by `sequential_model_adam_state_init`.
 
+`int sequential_model_optimizer_state_init(SequentialModel *model, OptimizerState *out_state, OptimizerType optimizer, float beta1, float beta2)`
+- Allocates optimizer buffers for each layer in `model` for generic optimizer use.
+
+`void sequential_model_optimizer_state_free(SequentialModel *model, OptimizerState *state)`
+- Frees buffers allocated by `sequential_model_optimizer_state_init`.
+
 ### One-step training (plugin sequential API)
 
 `int sequential_model_train_step_cfg(SequentialModel *model, const float *input, const float *target, float *output, const SequentialTrainConfig *cfg, float *loss_out)`
 - Executes one train step using compact `cfg` (forward + loss grad + backward + update).
 
-`int sequential_model_train_step(SequentialModel *model, const float *input, const float *target, float *output, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- One training step with selectable loss (`LOSS_MSE` or `LOSS_BCE`) and optimizer.
+`int sequential_model_train_step(SequentialModel *model, const float *input, const float *target, float *output, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, OptimizerState *optimizer_state, float *loss_out)`
+- One training step with selectable loss (`LOSS_MSE`, `LOSS_BCE`, or `LOSS_HUBER`) and optimizer.
 
 ### Optimize from already-computed prediction (plugin sequential API)
 
-`int sequential_model_optimize_from_prediction(SequentialModel *model, const float *prediction, const float *target, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
-- Runs optimization phase only using existing `prediction` from a previous forward pass. Pass `LOSS_MSE` or `LOSS_BCE`.
+`int sequential_model_optimize_from_prediction(SequentialModel *model, const float *prediction, const float *target, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, OptimizerState *optimizer_state, float *loss_out)`
+- Runs optimization phase only using existing `prediction` from a previous forward pass. Supports `LOSS_MSE`, `LOSS_BCE`, and `LOSS_HUBER`.
 
 ### Layer-array sequential API
 
 `int sequential_forward(Layer *layers, int num_layers, const float *input, float *output)`
 - Runs forward pass through a raw array of dense `Layer` structs.
 
-`int sequential_train_step_sgd(Layer *layers, int num_layers, const float *input, const float *target, float *output, float **grads_w, float **grads_b, float learning_rate, float *loss_out)`
-`int sequential_train_step(Layer *layers, int num_layers, const float *input, const float *target, float *output, float **grads_w, float **grads_b, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
+`int sequential_train_step(Layer *layers, int num_layers, const float *input, const float *target, float *output, float **grads_w, float **grads_b, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, OptimizerState *optimizer_state, float *loss_out)`
 - One-step training on dense layer arrays with selectable loss and optimizer.
 
-`int sequential_optimize_from_prediction(Layer *layers, int num_layers, const float *prediction, const float *target, float **grads_w, float **grads_b, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, AdamOptimizerState *adam_state, float *loss_out)`
+`int sequential_optimize_from_prediction(Layer *layers, int num_layers, const float *prediction, const float *target, float **grads_w, float **grads_b, LossFunctionType loss_function, OptimizerType optimizer, float learning_rate, OptimizerState *optimizer_state, float *loss_out)`
 - Optimization-only helper for layer arrays with selectable loss and optimizer.
 
 ## Common Error Cases
