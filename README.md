@@ -133,6 +133,8 @@ sequential_model_free(&model);
 
 `examples/Other_Exaple.c` is the advanced training example with a deeper network, selectable loss/optimizer, and evaluation metrics.
 
+`examples/mnist_tiny_pgm.c` is an out-of-box conv/pool + flatten MNIST-style demo using synthetic digits generated at runtime.
+
 ## Contributing
 
 its a little bit of bad code, if you find a pice of code that is bad please contribute to this project or make a issue report on github. Thanks a lot!!!!

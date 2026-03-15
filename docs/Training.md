@@ -272,6 +272,20 @@ sequential_model_add_conv2d_simple(&model, 1, 16, 3, 2); /* stride=2 */
 sequential_model_add_maxpool2d_simple(&model, 2, 2);
 ```
 
+MNIST tiny example stack used in `examples/mnist_tiny_pgm.c`:
+
+```c
+sequential_model_add_conv2d(&model, 28, 28, 1, 4, 4, 4, 1, 0, ACT_LINEAR);
+sequential_model_add_maxpool2d(&model, 25, 25, 4, 5, 5, 5, 0);
+sequential_model_add_conv2d(&model, 5, 5, 4, 4, 2, 2, 1, 0, ACT_LINEAR);
+sequential_model_add_maxpool2d(&model, 4, 4, 4, 2, 2, 2, 0);
+sequential_model_add_flatten(&model);
+sequential_model_add_dense(&model, 16, 32, ACT_RELU);
+sequential_model_add_dense(&model, 32, 64, ACT_RELU);
+sequential_model_add_dense(&model, 64, 64, ACT_RELU);
+sequential_model_add_dense(&model, 64, 10, ACT_LINEAR);
+```
+
 ## Image dataset training (PGM)
 
 Use `image_processing.h` when training from image files.

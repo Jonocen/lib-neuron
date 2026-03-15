@@ -115,6 +115,9 @@ Scope:
 `int layer_plugin_maxpool2d_create(int input_width, int input_height, int channels, int pool_width, int pool_height, int stride, int padding, LayerPlugin *out_plugin)`
 - Creates a MaxPool2D plugin for flattened CHW tensors.
 
+`int layer_plugin_flatten_create(int size, LayerPlugin *out_plugin)`
+- Creates an explicit flatten plugin layer (identity transform over contiguous tensors).
+
 `void layer_plugin_free(LayerPlugin *plugin)`
 - Frees plugin-owned context via `destroy` callback and resets plugin pointers.
 

@@ -23,4 +23,5 @@ They also cover image data helpers for loading PGM files and training from in-me
 - Tensor layout for conv/pool APIs is flattened CHW (channel-major).
 - Model API is split across `models_types.h`, `models_core.h`, `models_training.h`, and `models_legacy.h`; `models.h` includes all of them.
 - `examples/Other_Exaple.c` is a compact layer-array training demo (name kept as-is to match the current filename/target).
+- `examples/mnist_tiny_pgm.c` demonstrates out-of-box image training with a conv/pool + flatten stack.
 - `APIReference.md` is a complete function-by-function reference for all public headers.

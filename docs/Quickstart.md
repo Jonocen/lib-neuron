@@ -33,13 +33,15 @@ This builds:
 ./examples/Other_Exaple
 ```
 
-MNIST-style tiny example (out-of-box synthetic digits):
+MNIST-style tiny example (out-of-box synthetic digits, conv/pool + flatten):
 
 ```sh
 make mnist_tiny_pgm
 ./examples/mnist_tiny_pgm
 ./examples/mnist_tiny_pgm 25 32 0.001 24
 ```
+
+The example builds a conv/pool backbone plus dense head and runs without any external dataset files.
 
 `Other_Exaple` is a compact layer-array training example.
 

@@ -77,7 +77,7 @@ What it demonstrates:
 - plugin dense layers via `sequential_model_add_dense`
 - framework-style flow: `sequential_model_compile` + `sequential_model_train` + `sequential_model_predict`
 
-## Example 3: tiny MNIST-style classifier (PGM)
+## Example 3: tiny MNIST-style classifier
 
 Source: `examples/mnist_tiny_pgm.c`
 
@@ -101,15 +101,17 @@ Optional args:
 
 What it demonstrates:
 
-- loading many labeled images through `image_dataset_load_pgm_labeled`
 - out-of-box synthetic digit dataset generation via `image_dataset_make_tiny_digits`
-- training a `28x28 -> 128 -> 64 -> 10` dense model
+- conv/pool backbone with explicit `Flatten` before dense classifier
+- training stack equivalent to:
+	`Conv(1->4,4x4) -> Pool(5x5) -> Conv(4->4,2x2) -> Pool(2x2) -> Flatten -> Linear(16->32->64->64->10)`
 - class decoding with `image_dataset_get_label` and `image_argmax`
 
 Notes:
 
 - No external dataset files are required for this example.
 - If you want real image files, use `image_dataset_load_pgm_manifest` / `image_dataset_load_pgm_labeled`.
+- The first pooling step uses `5x5` in this C example to satisfy strict pooling geometry checks in the current library.
 
 ## Conv2D + MaxPool2D snippet
 
