@@ -12,7 +12,7 @@
 - `layers`: plugin wrappers (`LayerPlugin`) for sequential models
 - `models`: sequential training/inference helpers
 - `lossfunctions`: MSE/BCE losses and gradients
-- `optimizers`: SGD/Adam/RMSProp updates
+- `optimizers`: SGD/Adam/RMSProp/Adagrad/AdamW updates
 
 Include everything with:
 

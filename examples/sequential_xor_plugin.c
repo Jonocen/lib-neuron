@@ -18,7 +18,7 @@ int main(void) {
         return 1;
     }
 
-    if (sequential_model_compile(&model, LOSS_BCE, OPTIMIZER_ADAM, 0.005f, 0.9f, 0.999f) != 0) return 1;
+    if (sequential_model_compile(&model, LOSS_BCE, OPTIMIZER_ADAMW, 0.005f, 0.9f, 0.999f) != 0) return 1;
         if (sequential_model_train_with_progress(&model, &x[0][0], &y[0][0], 4, 2, 1, epochs, batch_size, 10, &loss) != 0) return 1;
     printf("final loss = %.6f\n", loss);
     puts("predictions:");

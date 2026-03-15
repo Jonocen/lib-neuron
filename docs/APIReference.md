@@ -30,6 +30,7 @@ Scope:
 - `OPTIMIZER_ADAM`
 - `OPTIMIZER_RMSPROP`
 - `OPTIMIZER_ADAGRAD`
+- `OPTIMIZER_ADAMW`
 
 ### `LossFunctionType`
 
@@ -146,6 +147,9 @@ Scope:
 
 `int adagrad_optimizer(float *weights, float *grads, float *accumulator, float learning_rate, int size)`
 - Applies one in-place Adagrad update to `weights` using running squared-gradient `accumulator`.
+
+`int adamw_optimizer(float *weights, float *grads, float *m, float *v, float beta1, float beta2, float learning_rate, int t, int size)`
+- Applies one in-place AdamW update to `weights` using moment buffers and decoupled weight decay.
 
 ## `models.h`
 

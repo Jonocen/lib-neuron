@@ -23,6 +23,11 @@ Check For Flaws in code                 NO
 
 
 
+
+/* =========================
+ * Internal Utility Helpers
+ * ========================= */
+
 static int has_lnn_extension(const char *file_path) {
     if (!file_path) return 0;
 
@@ -136,6 +141,10 @@ static void free_grad_accumulators(float **acc_w,
     }
 }
 
+/* ==========================
+ * Optimizer State + Updates
+ * ========================== */
+
 static int adam_optimizer_state_valid(const OptimizerState *optimizer_state) {
     if (!optimizer_state) return 0;
     if (!optimizer_state->m_w || !optimizer_state->v_w || !optimizer_state->m_b || !optimizer_state->v_b) return 0;
@@ -158,6 +167,15 @@ static int adagrad_optimizer_state_valid(const OptimizerState *optimizer_state) 
     return 1;
 }
 
+static int adamw_optimizer_state_valid(const OptimizerState *optimizer_state){
+    if (!optimizer_state) return 0;
+    if (!optimizer_state->m_w || !optimizer_state->v_w || !optimizer_state->m_b || !optimizer_state->v_b) return 0;
+    if (optimizer_state->step <= 0) return 0;
+    if (optimizer_state->beta1 <= 0.0f || optimizer_state->beta1 >= 1.0f) return 0;
+    if (optimizer_state->beta2 <= 0.0f || optimizer_state->beta2 >= 1.0f) return 0;
+    return 1;
+}
+
 static int optimizer_state_valid(OptimizerType optimizer,
                                  const OptimizerState *optimizer_state) {
     if (optimizer == OPTIMIZER_ADAM) {
@@ -168,6 +186,9 @@ static int optimizer_state_valid(OptimizerType optimizer,
     }
     if (optimizer == OPTIMIZER_ADAGRAD) {
         return adagrad_optimizer_state_valid(optimizer_state);
+    }
+    if (optimizer == OPTIMIZER_ADAMW) {
+        return adamw_optimizer_state_valid(optimizer_state);
     }
     return 1;
 }
@@ -219,6 +240,19 @@ static int apply_optimizer_update(float *weights,
                                  size);
     }
 
+    if (optimizer == OPTIMIZER_ADAMW) {
+        if (!optimizer_state || !opt_state_a || !opt_state_b) return -1;
+        return adamw_optimizer(weights,
+                               (float *)grads,
+                               opt_state_a,
+                               opt_state_b,
+                               optimizer_state->beta1,
+                               optimizer_state->beta2,
+                               learning_rate,
+                               optimizer_state->step,
+                               size);
+    }
+
     return -1;
 }
 
@@ -255,6 +289,10 @@ static int compute_loss_and_grad(LossFunctionType loss_function,
 
     return -1;
 }
+
+/* ========================
+ * Model Lifecycle + Layers
+ * ======================== */
 
 //Todo: Make a new init function
 
@@ -624,6 +662,10 @@ int sequential_model_load_lnn(SequentialModel *model,
     return 0;
 }
 
+/* ==========================
+ * Compile + Training (Model)
+ * ========================== */
+
 //Todo: renew the model_compile function and its variable names
 
 int sequential_model_compile(SequentialModel *model,
@@ -648,7 +690,7 @@ int sequential_model_compile_optimizer(SequentialModel *model,
                                        float optimizer_beta2) {
     if (!model || model->num_layers <= 0 || learning_rate <= 0.0f) return -1;
     if (loss_function != LOSS_MSE && loss_function != LOSS_BCE && loss_function != LOSS_HUBER) return -1;
-    if (optimizer != OPTIMIZER_SGD && optimizer != OPTIMIZER_ADAM && optimizer != OPTIMIZER_RMSPROP && optimizer != OPTIMIZER_ADAGRAD) return -1;
+    if (optimizer != OPTIMIZER_SGD && optimizer != OPTIMIZER_ADAM && optimizer != OPTIMIZER_RMSPROP && optimizer != OPTIMIZER_ADAGRAD && optimizer != OPTIMIZER_ADAMW) return -1;
     if (optimizer == OPTIMIZER_RMSPROP && learning_rate <= 0.0f) return -1;
 
     if (model->compiled_owns_optimizer_state) {
@@ -661,7 +703,7 @@ int sequential_model_compile_optimizer(SequentialModel *model,
     model->compiled_optimizer = optimizer;
     model->compiled_learning_rate = learning_rate;
 
-    if (optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_RMSPROP || optimizer == OPTIMIZER_ADAGRAD) {
+    if (optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_RMSPROP || optimizer == OPTIMIZER_ADAGRAD || optimizer == OPTIMIZER_ADAMW) {
         if (sequential_model_optimizer_state_init(model,
                                                   &model->compiled_optimizer_state,
                                                   optimizer,
@@ -746,7 +788,8 @@ int sequential_model_train_with_progress(SequentialModel *model,
     OptimizerState *optimizer_state =
         (model->compiled_optimizer == OPTIMIZER_ADAM ||
          model->compiled_optimizer == OPTIMIZER_RMSPROP ||
-         model->compiled_optimizer == OPTIMIZER_ADAGRAD)
+         model->compiled_optimizer == OPTIMIZER_ADAGRAD ||
+         model->compiled_optimizer == OPTIMIZER_ADAMW)
             ? &model->compiled_optimizer_state
             : NULL;
 
@@ -838,6 +881,11 @@ int sequential_model_train_with_progress(SequentialModel *model,
                         opt_state_w_b = optimizer_state->v_w[l];
                         opt_state_b_a = optimizer_state->m_b[l];
                         opt_state_b_b = optimizer_state->v_b[l];
+                    } else if (model->compiled_optimizer == OPTIMIZER_ADAMW) {
+                        opt_state_w_a = optimizer_state->m_w[l];
+                        opt_state_w_b = optimizer_state->v_w[l];
+                        opt_state_b_a = optimizer_state->m_b[l];
+                        opt_state_b_b = optimizer_state->v_b[l];
                     } else if (model->compiled_optimizer == OPTIMIZER_RMSPROP) {
                         opt_state_w_a = optimizer_state->m_w[l];
                         opt_state_b_a = optimizer_state->m_b[l];
@@ -872,7 +920,7 @@ int sequential_model_train_with_progress(SequentialModel *model,
                     }
                 }
 
-                if (model->compiled_optimizer == OPTIMIZER_ADAM) {
+                if (model->compiled_optimizer == OPTIMIZER_ADAM || model->compiled_optimizer == OPTIMIZER_ADAMW) {
                     optimizer_state->step += 1;
                 }
             }
@@ -996,6 +1044,11 @@ int sequential_model_train_with_progress(SequentialModel *model,
                     opt_state_w_b = optimizer_state->v_w[l];
                     opt_state_b_a = optimizer_state->m_b[l];
                     opt_state_b_b = optimizer_state->v_b[l];
+                } else if (model->compiled_optimizer == OPTIMIZER_ADAMW) {
+                    opt_state_w_a = optimizer_state->m_w[l];
+                    opt_state_w_b = optimizer_state->v_w[l];
+                    opt_state_b_a = optimizer_state->m_b[l];
+                    opt_state_b_b = optimizer_state->v_b[l];
                 } else if (model->compiled_optimizer == OPTIMIZER_RMSPROP) {
                     opt_state_w_a = optimizer_state->m_w[l];
                     opt_state_b_a = optimizer_state->m_b[l];
@@ -1024,7 +1077,7 @@ int sequential_model_train_with_progress(SequentialModel *model,
                 }
             }
 
-            if (model->compiled_optimizer == OPTIMIZER_ADAM) {
+            if (model->compiled_optimizer == OPTIMIZER_ADAM || model->compiled_optimizer == OPTIMIZER_ADAMW) {
                 optimizer_state->step += 1;
             }
         }
@@ -1084,6 +1137,10 @@ int sequential_model_train(SequentialModel *model,
                                                 0,
                                                 final_loss_out);
 }
+
+/* ===========================
+ * Train Config + State (Model)
+ * =========================== */
 
 void sequential_train_config_init_sgd(SequentialTrainConfig *cfg,
                                       LossFunctionType loss_function,
@@ -1178,10 +1235,10 @@ int sequential_model_optimizer_state_init(SequentialModel *model,
                                           float beta1,
                                           float beta2) {
     if (!model || model->num_layers <= 0 || !out_state) return -1;
-    if (optimizer != OPTIMIZER_SGD && optimizer != OPTIMIZER_ADAM && optimizer != OPTIMIZER_RMSPROP && optimizer != OPTIMIZER_ADAGRAD) return -1;
+    if (optimizer != OPTIMIZER_SGD && optimizer != OPTIMIZER_ADAM && optimizer != OPTIMIZER_RMSPROP && optimizer != OPTIMIZER_ADAGRAD && optimizer != OPTIMIZER_ADAMW) return -1;
     if (optimizer == OPTIMIZER_SGD) return 0;
     if (beta1 <= 0.0f || beta1 >= 1.0f) return -1;
-    if (optimizer == OPTIMIZER_ADAM && (beta2 <= 0.0f || beta2 >= 1.0f)) return -1;
+    if ((optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_ADAMW) && (beta2 <= 0.0f || beta2 >= 1.0f)) return -1;
 
     if (out_state->m_w || out_state->v_w || out_state->m_b || out_state->v_b) return -1;
 
@@ -1198,11 +1255,11 @@ int sequential_model_optimizer_state_init(SequentialModel *model,
         int w_size = model->layers[i].weights_size(model->layers[i].ctx);
         int b_size = model->layers[i].biases_size(model->layers[i].ctx);
         out_state->m_w[i] = calloc((size_t)w_size, sizeof(float));
-        out_state->v_w[i] = (optimizer == OPTIMIZER_ADAM) ? calloc((size_t)w_size, sizeof(float)) : NULL;
+        out_state->v_w[i] = (optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_ADAMW) ? calloc((size_t)w_size, sizeof(float)) : NULL;
         out_state->m_b[i] = calloc((size_t)b_size, sizeof(float));
-        out_state->v_b[i] = (optimizer == OPTIMIZER_ADAM) ? calloc((size_t)b_size, sizeof(float)) : NULL;
+        out_state->v_b[i] = (optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_ADAMW) ? calloc((size_t)b_size, sizeof(float)) : NULL;
         if (!out_state->m_w[i] || !out_state->m_b[i] ||
-            (optimizer == OPTIMIZER_ADAM && (!out_state->v_w[i] || !out_state->v_b[i]))) {
+            ((optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_ADAMW) && (!out_state->v_w[i] || !out_state->v_b[i]))) {
             sequential_model_optimizer_state_free(model, out_state);
             return -1;
         }
@@ -1210,7 +1267,7 @@ int sequential_model_optimizer_state_init(SequentialModel *model,
 
     out_state->step = 1;
     out_state->beta1 = beta1;
-    out_state->beta2 = (optimizer == OPTIMIZER_ADAM) ? beta2 : 0.0f;
+    out_state->beta2 = (optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_ADAMW) ? beta2 : 0.0f;
     return 0;
 }
 
@@ -1340,7 +1397,7 @@ int sequential_model_optimize_from_prediction(SequentialModel *model,
         float *opt_state_b_a = NULL;
         float *opt_state_b_b = NULL;
 
-        if (optimizer == OPTIMIZER_ADAM) {
+        if (optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_ADAMW) {
             if (!optimizer_state->m_w[i] || !optimizer_state->v_w[i] ||
                 !optimizer_state->m_b[i] || !optimizer_state->v_b[i]) {
                 return -1;
@@ -1392,12 +1449,16 @@ int sequential_model_optimize_from_prediction(SequentialModel *model,
         }
     }
 
-    if (optimizer == OPTIMIZER_ADAM) {
+    if (optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_ADAMW) {
         optimizer_state->step += 1;
     }
 
     return 0;
 }
+
+/* ============================
+ * Legacy Layer-Array API Path
+ * ============================ */
 
 static int max_layer_width(const Layer *layers, int num_layers) {
     int max_width = 0;
@@ -1534,7 +1595,7 @@ int sequential_optimize_from_prediction(Layer *layers, int num_layers,
         float *opt_state_b_a = NULL;
         float *opt_state_b_b = NULL;
 
-        if (optimizer == OPTIMIZER_ADAM) {
+        if (optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_ADAMW) {
             if (!optimizer_state->m_w[i] || !optimizer_state->v_w[i] ||
                 !optimizer_state->m_b[i] || !optimizer_state->v_b[i]) {
                 free(delta_curr);
@@ -1597,7 +1658,7 @@ int sequential_optimize_from_prediction(Layer *layers, int num_layers,
     free(delta_curr);
     free(delta_prev);
 
-    if (optimizer == OPTIMIZER_ADAM) {
+    if (optimizer == OPTIMIZER_ADAM || optimizer == OPTIMIZER_ADAMW) {
         optimizer_state->step += 1;
     }
 

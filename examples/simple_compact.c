@@ -14,8 +14,8 @@ int main(void) {
 
     if (sequential_model_randomize(&model, 0.4f) != 0) return 1;
 
-    if (sequential_model_compile(&model, LOSS_MSE, OPTIMIZER_ADAM, 0.05f, 0.9f, 0.999f) != 0) return 1;
-    if (sequential_model_train(&model, &x[0][0], &y[0][0], 4, 2, 1, 5000, 1, &final_loss) != 0) return 1;
+    if (sequential_model_compile(&model, LOSS_HUBER, OPTIMIZER_ADAGRAD, 0.05f, 0.9f, 0.999f) != 0) return 1;
+    if (sequential_model_train_with_progress(&model, &x[0][0], &y[0][0], 4, 2, 1, 5000, 1, 10, &final_loss) != 0) return 1;
     printf("final loss = %.6f\n", final_loss);
 
     puts("predictions:");

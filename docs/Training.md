@@ -6,7 +6,7 @@ This page explains the training flow in `lib-neuron`.
 
 - `matrixcalculation`: `layer_forward`, `layer_backward`, `conv2d_layer_forward`, `maxpool2d_layer_forward`
 - `lossfunctions`: `loss_mse`, `loss_mse_grad`, `loss_bce`, `loss_bce_grad`
-- `optimizers`: `sgd_optimizer`, `adam_optimizer`, `rmsprop_optimizer`, `adagrad_optimizer`
+- `optimizers`: `sgd_optimizer`, `adam_optimizer`, `rmsprop_optimizer`, `adagrad_optimizer`, `adamw_optimizer`
 - `models`: sequential helpers
 
 Loss selection in models (`loss_function` parameter accepts `LOSS_MSE` or `LOSS_BCE`):
@@ -171,6 +171,39 @@ sequential_train_step(layers, num_layers, input, target, output,
 ```
 
 For stable training, keep `m`, `v`, and `t` persistent across all epochs/batches.
+
+## Using AdamW with sequential helpers
+
+Set optimizer to `OPTIMIZER_ADAMW` and pass an initialized `AdamOptimizerState`.
+
+For AdamW in this API, state usage is the same as Adam:
+
+- `m_w` / `m_b`: first moments
+- `v_w` / `v_b`: second moments
+- `step`: bias-correction step counter (starts at `1`)
+- `beta1`, `beta2`: Adam moments
+
+Pseudo-usage:
+
+```c
+AdamOptimizerState adamw = {0};
+
+sequential_model_optimizer_state_init(&model,
+									  &adamw,
+									  OPTIMIZER_ADAMW,
+									  0.9f,
+									  0.999f);
+
+sequential_model_train_step(&model,
+							input,
+							target,
+							output,
+							LOSS_BCE,
+							OPTIMIZER_ADAMW,
+							0.001f,
+							&adamw,
+							&loss);
+```
 
 ## Using RMSProp with sequential helpers
 
