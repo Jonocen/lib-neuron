@@ -6,6 +6,9 @@ extern "C" {
 #endif
 
 #include "matrixcalculation.h"
+#include "computervison.h"
+#include "libvideo.h"
+#include "dataset.h"
 #include "layers.h"
 #include "lossfunctions.h"
 #include "optimizers.h"

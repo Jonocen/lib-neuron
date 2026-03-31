@@ -4,10 +4,13 @@ This is the complete public API reference for `lib-neuron`.
 
 Scope:
 - `include/matrixcalculation.h`
+- `include/computervison.h`
+- `include/libvideo.h`
+- `include/dataset.h`
 - `include/layers.h`
 - `include/lossfunctions.h`
 - `include/optimizers.h`
-- `include/models.h`
+- `include/models.h
 
 ## Conventions
 
@@ -92,6 +95,99 @@ Scope:
 `int maxpool2d_layer_backward(const MaxPool2DLayer *layer, const float *delta_in, float *delta_out, float *grad_w, float *grad_b)`
 - Routes each pooled gradient back to the winning input index from forward pass.
 - `grad_w`/`grad_b` are dummy outputs (kept for plugin API compatibility).
+
+## `computervison.h`
+
+### Types and enums
+
+`JCVImreadMode`
+- `JCV_IMREAD_UNCHANGED`: keep source channel count.
+- `JCV_IMREAD_GRAYSCALE`: force 1-channel output.
+- `JCV_IMREAD_COLOR`: force 3-channel output.
+
+`JCVInterpolation`
+- `JCV_INTER_NEAREST`: nearest-neighbor resize.
+- `JCV_INTER_LINEAR`: bilinear resize.
+
+`JCVChannelOrder`
+- `JCV_CHANNEL_ORDER_RGB`
+- `JCV_CHANNEL_ORDER_BGR`
+
+`JCVImage`
+- In-memory image container (`width`, `height`, `channels`, `data`).
+- `data` stores HWC byte pixels.
+
+### Image I/O and transforms
+
+`int jcv_imread(const char *file_path, JCVImreadMode mode, JCVImage *out_image)`
+- Loads native `P5`/`P6` images directly.
+- For other formats, attempts conversion through `magick`, `convert`, or `ffmpeg`.
+- Applies requested channel mode before returning.
+
+`int jcv_resize(const JCVImage *src, int new_width, int new_height, JCVInterpolation interpolation, JCVImage *out_image)`
+- Resizes image into a newly allocated output image.
+
+`int jcv_convert_channels(const JCVImage *src, int out_channels, JCVImage *out_image)`
+- Converts channel count between 1 and 3.
+
+### Model input conversion
+
+`int jcv_image_to_chw_float(const JCVImage *image, int normalize_01, float **out_data, int *out_size)`
+- Converts HWC bytes to flattened CHW float tensor.
+- When `normalize_01 != 0`, scales pixel values from `[0,255]` to `[0,1]`.
+
+`int jcv_load_image_for_model(const char *file_path, JCVImreadMode mode, int target_width, int target_height, JCVInterpolation interpolation, int normalize_01, float **out_input, int *out_size, int *out_channels)`
+- Convenience helper for load + optional resize + CHW float conversion.
+- Output is ready for `sequential_model_forward` / `sequential_model_train_step`.
+
+`int jcv_format_image_for_model(const JCVImage *src, int out_channels, int target_width, int target_height, JCVInterpolation interpolation, JCVChannelOrder channel_order, int normalize_01, float **out_input, int *out_size)`
+- One-call preprocessing for channel conversion, resize, RGB/BGR formatting, and CHW float conversion.
+
+`void jcv_image_free(JCVImage *image)`
+- Frees memory owned by a `JCVImage`.
+
+## `libvideo.h`
+
+`int libvideo_show_image_ascii(const JCVImage *image, int output_width)`
+- Renders a loaded image as ASCII art in terminal.
+
+`int libvideo_show_image_file_ascii(const char *file_path, JCVImreadMode mode, int output_width)`
+- Loads an image and renders it as ASCII art.
+
+`int libvideo_play_image_sequence_ascii(const char **file_paths, int frame_count, JCVImreadMode mode, int output_width, int fps, int loops)`
+- Plays image files as an ASCII frame sequence in terminal.
+
+## `dataset.h`
+
+`int image_dataset_init(ImageDataset *dataset, int width, int height, int channels, int class_count, JCVImreadMode mode, JCVInterpolation interpolation)`
+- Initializes an image dataset container for fixed-size model inputs.
+
+`void image_dataset_free(ImageDataset *dataset)`
+- Frees all dataset metadata and cached buffers.
+
+`int image_dataset_add(ImageDataset *dataset, const char *image_path, int label)`
+- Adds one labeled image sample.
+
+`int image_dataset_map_normalize(ImageDataset *dataset)`
+- Enables [0,1] normalization during dataset cache build.
+
+`int image_dataset_batch(ImageDataset *dataset, int batch_size)`
+- Configures training batch size.
+
+`int image_dataset_cache(ImageDataset *dataset)`
+- Marks dataset for cache usage (cache is built with `image_dataset_build_cache`).
+
+`int image_dataset_prefetch(ImageDataset *dataset, int prefetch_count)`
+- Stores prefetch setting for future async pipeline use.
+
+`int image_dataset_map_channel_order(ImageDataset *dataset, JCVChannelOrder channel_order)`
+- Selects RGB/BGR ordering for 3-channel formatted inputs.
+
+`int image_dataset_build_cache(ImageDataset *dataset)`
+- Loads all samples and builds contiguous `inputs` / `targets` buffers.
+
+`int image_dataset_train(SequentialModel *model, ImageDataset *dataset, int epochs, float *final_loss_out)`
+- Trains a compiled sequential model using cached dataset buffers and configured batch size.
 
 ## `layers.h`
 

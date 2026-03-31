@@ -8,6 +8,7 @@ These docs cover dense, conv2d, and maxpool2d workflows across both low-level an
 
 - [Quickstart](Quickstart.md)
 - [API Reference](APIReference.md)
+- [Computer Vision](ComputerVision.md)
 - [Examples](Examples.md)
 - [Training](Training.md)
 - [Use the Library + First Script](FirstScript.md)

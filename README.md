@@ -17,6 +17,9 @@ bits auf the layer system, and a bit of overall things i coud not to without.
 ## Modules
 
 - `matrixcalculation`: activations, dense layers, conv2d, maxpool2d
+- `computervison`: jcv-like image loading/resize + CHW float conversion
+- `libvideo`: terminal ASCII image/video preview helpers
+- `dataset`: tf.data-like image dataset pipeline helpers
 - `layers`: plugin wrappers (`LayerPlugin`) for sequential models
 - `models`: sequential training/inference helpers
 - `lossfunctions`: MSE/BCE losses and gradients
@@ -48,6 +51,69 @@ Include everything with:
 - `-1` means invalid input or internal failure
 
 Array data (weights, gradients, activations) is updated in place via pointers.
+
+## Image input (jcv-like)
+
+The `computervison` module provides a simple jcv-style flow for PPM/PGM images:
+
+- `jcv_imread` modes: unchanged / grayscale / color
+- `jcv_resize`: nearest or bilinear
+- `jcv_load_image_for_model`: load + optional resize + CHW float tensor
+
+Example:
+
+```c
+#include <stdlib.h>
+#include <lib-neuron.h>
+
+float *input = NULL;
+int input_size = 0;
+int channels = 0;
+
+if (jcv_load_image_for_model("sample.ppm",
+							 JCV_IMREAD_COLOR,
+							 28,
+							 28,
+							 JCV_INTER_LINEAR,
+							 1,
+							 &input,
+							 &input_size,
+							 &channels) == 0) {
+	float out[10];
+	sequential_model_predict(&model, input, out);
+	free(input);
+}
+```
+
+## Dataset pipeline (tf.data style)
+
+Use `dataset` helpers to configure image pipelines with a familiar flow:
+
+```c
+ImageDataset ds;
+image_dataset_init(&ds, 28, 28, 1, 10, JCV_IMREAD_GRAYSCALE, JCV_INTER_LINEAR);
+/* image_dataset_add(&ds, "path/to/img.jpg", label); repeated for all samples */
+image_dataset_map_normalize(&ds);
+image_dataset_batch(&ds, 128);
+image_dataset_cache(&ds);
+image_dataset_prefetch(&ds, 2);
+image_dataset_build_cache(&ds);
+```
+
+## Show pictures in terminal
+
+`libvideo` can render loaded images as ASCII output directly in terminal:
+
+```c
+libvideo_show_image_file_ascii("sample.ppm", JCV_IMREAD_COLOR, 80);
+```
+
+You can also play multiple images like a frame sequence:
+
+```c
+const char *frames[] = {"f1.pgm", "f2.pgm", "f3.pgm"};
+libvideo_play_image_sequence_ascii(frames, 3, JCV_IMREAD_GRAYSCALE, 80, 8, 2);
+```
 
 ## Build
 

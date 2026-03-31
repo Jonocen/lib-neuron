@@ -4,6 +4,29 @@ Current examples are in `examples/`.
 
 The shipped examples currently focus on dense workflows. Conv2D/MaxPool2D APIs are available and shown below as a minimal snippet.
 
+## Example 3: image input training step
+
+Source: `examples/image_train_example.c`
+
+Build:
+
+```sh
+make examples
+```
+
+Run:
+
+```sh
+./examples/image_train_example 28 28 200 2 0:data/cat1.jpg 0:data/cat2.jpg 1:data/dog1.jpg 1:data/dog2.jpg
+```
+
+What it demonstrates:
+
+- tf.data-style dataset calls: normalize, batch, cache, prefetch
+- loading and formatting many labeled images into one dataset
+- cached contiguous training buffers for model fitting
+- training through `image_dataset_train` + `sequential_model_train`
+
 ## Build all examples
 
 ```sh
